@@ -1244,10 +1244,173 @@
           }
         }
       }
+    },
+    "/admin/apps/{app_id}/pay": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Lancer un paiement pour une app (sans clé API)",
+        "description": "Exécute un paiement pour l'app `app_id` sans passer par une clé API.\n\nLa transaction est rattachée à l'app (isolation) avec `api_key_id=None`\npour traçabilité (lancé par admin). Même logique que `POST /pay`.",
+        "operationId": "admin_pay_admin_apps__app_id__pay_post",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPayRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Service de paiement amont temporairement indisponible."
+          },
+          "404": {
+            "description": "Agrégateur inconnu ou app introuvable."
+          },
+          "400": {
+            "description": "Mode invalide."
+          },
+          "422": {
+            "description": "Réseau non supporté."
+          },
+          "409": {
+            "description": "Doublon ou mode replay sans template."
+          },
+          "502": {
+            "description": "Replay échoué et fallback navigateur désactivé."
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AdminPayRequest": {
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "title": "Amount",
+            "description": "Montant en XAF.",
+            "examples": [
+              25
+            ]
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone",
+            "description": "Numéro Mobile Money (sans +237).",
+            "examples": [
+              "696080087"
+            ]
+          },
+          "network": {
+            "type": "string",
+            "title": "Network",
+            "description": "Réseau : Orangemoney ou MTN.",
+            "examples": [
+              "Orangemoney"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "Email du payeur.",
+            "examples": [
+              "client@example.com"
+            ]
+          },
+          "sender_name": {
+            "type": "string",
+            "title": "Sender Name",
+            "description": "Nom affiché de l'émetteur.",
+            "default": "Rauvalia"
+          },
+          "callback_url": {
+            "type": "string",
+            "title": "Callback Url",
+            "description": "URL de callback (défaut: celle de l'app).",
+            "default": ""
+          },
+          "aggregator": {
+            "type": "string",
+            "title": "Aggregator",
+            "description": "Nom de l'agrégateur (cf. GET /aggregators).",
+            "default": "digikuntz"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "auto | browser | replay.",
+            "default": "auto",
+            "examples": [
+              "auto"
+            ]
+          },
+          "fallback_browser": {
+            "type": "boolean",
+            "title": "Fallback Browser",
+            "description": "En mode auto : basculer sur le navigateur si le replay est non concluant.",
+            "default": true
+          },
+          "end_user_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End User Ref",
+            "description": "Identifiant opaque de l'utilisateur final (ex. votre user_id). Stocké tel quel pour vos rapprochements ; facultatif."
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount",
+          "phone",
+          "network",
+          "email"
+        ],
+        "title": "AdminPayRequest",
+        "description": "Requête de paiement lancée par un admin pour une app spécifique."
+      },
       "ApiKeyCreate": {
         "properties": {
           "env": {

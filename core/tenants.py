@@ -223,6 +223,21 @@ async def get_api_key(key_id: int) -> dict | None:
     return await db._run(_select)
 
 
+async def get_app(app_id: int) -> dict | None:
+    """Récupère une app par son ID (sans validation de propriété)."""
+    client = _client()
+    if client is None or app_id is None:
+        return None
+
+    def _select():
+        res = (client.table("apps")
+               .select("id, developer_id, name, callback_url, is_active, created_at")
+               .eq("id", app_id).limit(1).execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_select)
+
+
 async def list_apps(developer_id: int) -> list[dict]:
     client = _client()
     if client is None:

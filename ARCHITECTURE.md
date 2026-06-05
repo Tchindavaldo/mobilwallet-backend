@@ -40,7 +40,7 @@ ai_browser2/
 │   │   ├── webhooks.py           /webhook/digikuntz (callback statut entrant).
 │   │   ├── auth.py               /signup,/login,/refresh,/logout : compte dev (self-service).
 │   │   ├── projects.py           /apps,/apps/{id}/keys : le dev gère SES apps/clés (require_dev).
-│   │   ├── admin.py              /admin/* : supervision developers/apps/clés (require_admin).
+│   │   ├── admin.py              /admin/* : supervision developers/apps/clés + /admin/apps/{app_id}/pay (require_admin).
 │   │   └── dev.py                /drive, /test-llm.
 │   ├── schemas/                  Modèles Pydantic par domaine (payments, system, templates, dev,
 │   │                             admin, auth, projects).

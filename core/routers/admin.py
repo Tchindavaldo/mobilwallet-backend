@@ -1,15 +1,18 @@
-"""Endpoints admin : gestion des developers / apps / clés API.
+"""Endpoints admin : gestion des developers / apps / clés API + execution paiements.
 
 Tous protégés par `require_admin` (header X-Admin-Key). C'est ici qu'on crée les
-comptes intégrateurs et qu'on génère/révoque leurs clés. La clé en clair n'est
-renvoyée qu'à sa création (jamais ré-exposée ensuite).
+comptes intégrateurs, qu'on génère/révoque leurs clés, et qu'on peut lancer des
+paiements pour une app. La clé en clair n'est renvoyée qu'à sa création (jamais
+ré-exposée ensuite).
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core import auth, tenants
 from core.auth import require_admin
-from core.schemas.admin import ApiKeyCreate, ApiKeyCreated, AppCreate, DeveloperCreate
+from core.schemas.admin import AdminPayRequest, ApiKeyCreate, ApiKeyCreated, AppCreate, DeveloperCreate
+from core.schemas.payments import PayResponse
+from core.routers.payments import _execute_payment
 
 router = APIRouter(
     prefix="/admin",
@@ -76,3 +79,47 @@ async def revoke_key(app_id: int, key_id: int):
         auth.invalidate_cache(row["key_hash"])
     return {"revoked": {"id": row["id"], "app_id": row.get("app_id"),
                         "env": row.get("env"), "is_active": row.get("is_active")}}
+
+
+@router.post(
+    "/apps/{app_id}/pay",
+    response_model=PayResponse,
+    summary="Lancer un paiement pour une app (sans clé API)",
+    responses={
+        404: {"description": "Agrégateur inconnu ou app introuvable."},
+        400: {"description": "Mode invalide."},
+        422: {"description": "Réseau non supporté."},
+        409: {"description": "Doublon ou mode replay sans template."},
+        502: {"description": "Replay échoué et fallback navigateur désactivé."},
+        503: {"description": "Service de paiement amont temporairement indisponible."},
+    },
+)
+async def admin_pay(
+    app_id: int,
+    body: AdminPayRequest,
+    debug: bool = Query(False, include_in_schema=False),
+):
+    """Exécute un paiement pour l'app `app_id` sans passer par une clé API.
+
+    La transaction est rattachée à l'app (isolation) avec `api_key_id=None`
+    pour traçabilité (lancé par admin). Même logique que `POST /pay`.
+    """
+    app = await tenants.get_app(app_id)
+    if app is None:
+        raise HTTPException(404, {"error": "app_not_found",
+                                  "message": f"Aucune app trouvée avec l'id {app_id}."})
+
+    from core.schemas.payments import PayRequest
+    req = PayRequest(
+        amount=body.amount,
+        phone=body.phone,
+        network=body.network,
+        email=body.email,
+        sender_name=body.sender_name,
+        callback_url=body.callback_url or app.get("callback_url") or "",
+        aggregator=body.aggregator,
+        mode=body.mode,
+        fallback_browser=body.fallback_browser,
+        end_user_ref=body.end_user_ref,
+    )
+    return await _execute_payment(req, app_id=app_id, api_key_id=None, debug=debug)

@@ -20,6 +20,144 @@ log = logging.getLogger("ai_browser2")
 router = APIRouter()
 
 
+async def _execute_payment(
+    req: PayRequest,
+    app_id: int,
+    api_key_id: int | None,
+    debug: bool = False,
+) -> PayResponse | PayResponseDebug:
+    """Logique partagée d'exécution de paiement (réutilisée par /pay ET /admin/apps/{app_id}/pay).
+
+    Paramètres :
+      - req : requête paiement (amount, phone, network, aggregator, mode, etc.)
+      - app_id : app pour laquelle le paiement est lancé
+      - api_key_id : ID de la clé API (None si appelé par admin)
+      - debug : inclure le détail technique dans la réponse
+    """
+    browser = runtime.get_browser()
+    llm = runtime.get_llm()
+    if not browser or not llm:
+        raise HTTPException(500, "Not initialized")
+
+    cls = registry.get(req.aggregator)
+    if cls is None:
+        raise HTTPException(
+            404,
+            {
+                "error": "unknown_aggregator",
+                "message": f"Agrégateur '{req.aggregator}' inconnu.",
+                "supported_aggregators": registry.names(),
+            },
+        )
+    if req.mode not in ("auto", "browser", "replay"):
+        raise HTTPException(
+            400,
+            {
+                "error": "invalid_mode",
+                "message": f"Mode '{req.mode}' invalide.",
+                "supported_modes": ["auto", "browser", "replay"],
+            },
+        )
+
+    agg = cls(browser=browser, llm=llm, db=db)
+
+    canonical_network = agg.normalize_network(req.network)
+    if canonical_network is None:
+        raise HTTPException(
+            422,
+            {
+                "error": "invalid_network",
+                "message": f"Réseau '{req.network}' non supporté par l'agrégateur '{req.aggregator}'.",
+                "aggregator": req.aggregator,
+                "supported_networks": agg.supported_networks,
+            },
+        )
+
+    payment = PaymentRequest(
+        amount=req.amount,
+        phone=req.phone,
+        network=canonical_network,
+        email=req.email,
+        sender_name=req.sender_name,
+        callback_url=req.callback_url,
+    )
+
+    await _guard_duplicate(req)
+
+    async def _run_browser_and_save():
+        res = await agg.pay_via_browser(payment, tx_id=tx_id)
+        if res.curl_template:
+            await db.save_template(req.aggregator, res.curl_template)
+        return res
+
+    template = None
+    if req.mode == "replay":
+        template = await db.load_template(req.aggregator)
+        if template is None:
+            raise HTTPException(
+                409,
+                f"No stored curl template for '{req.aggregator}'. Run mode='browser' once to deduce it.",
+            )
+    elif req.mode == "auto":
+        template = await db.load_template(req.aggregator)
+        if template is None and not req.fallback_browser:
+            raise HTTPException(
+                409,
+                f"No template for '{req.aggregator}' and fallback_browser=false. Run mode='browser' first.",
+            )
+
+    tx_id = await db.insert_pending(
+        req.aggregator, req.mode, payment,
+        app_id=app_id, api_key_id=api_key_id, end_user_ref=req.end_user_ref,
+    )
+    result = None
+    engine_used = "replay"
+    try:
+        if req.mode == "replay":
+            result = await agg.replay(payment, template)
+            engine_used = "replay"
+        elif req.mode == "browser":
+            result = await _run_browser_and_save()
+            engine_used = "browser"
+        else:
+            if template is not None:
+                try:
+                    result = await agg.replay(payment, template)
+                    engine_used = "replay"
+                except Exception as e:  # noqa: BLE001
+                    log.warning("auto: replay raised (%s)", e)
+                    result = None
+                inconclusive = result is None or result.final_status in ("unknown", "timeout", "error", "")
+                if inconclusive and req.fallback_browser:
+                    log.info("auto: replay inconclusive -> falling back to browser")
+                    result = await _run_browser_and_save()
+                    engine_used = "browser"
+                elif result is None:
+                    raise HTTPException(502, "Replay failed and browser fallback disabled (fallback_browser=false)")
+            else:
+                result = await _run_browser_and_save()
+                engine_used = "browser"
+    finally:
+        result = _settle(result, engine_used)
+        await db.update_transaction(tx_id, result)
+        notify_settled(
+            tx_id, result, transaction_ref=result.transaction_id,
+            amount=req.amount, network=req.network, phone=req.phone,
+            end_user_ref=req.end_user_ref,
+            provider_transaction_id=result.provider_transaction_id,
+        )
+
+    if result.error_code in UPSTREAM_CODES:
+        log.warning("Upstream indisponible (tx_id=%s, code=%s): %s",
+                    tx_id, result.error_code, result.error or result.final_message)
+        raise HTTPException(
+            503,
+            {"code": result.error_code, "message": UPSTREAM_MESSAGES[result.error_code]},
+        )
+
+    return _render_response(result, debug)
+
+
 @router.post(
     "/pay",
     response_model=PayResponse,
@@ -50,144 +188,7 @@ async def pay(
     - **browser** : flux IA complet ; déduit et persiste le template curl.
     - **replay** : rejoue via le template stocké (409 si absent).
     """
-    browser = runtime.get_browser()
-    llm = runtime.get_llm()
-    if not browser or not llm:
-        raise HTTPException(500, "Not initialized")
-
-    cls = registry.get(req.aggregator)
-    if cls is None:
-        raise HTTPException(
-            404,
-            {
-                "error": "unknown_aggregator",
-                "message": f"Agrégateur '{req.aggregator}' inconnu.",
-                "supported_aggregators": registry.names(),
-            },
-        )
-    if req.mode not in ("auto", "browser", "replay"):
-        raise HTTPException(
-            400,
-            {
-                "error": "invalid_mode",
-                "message": f"Mode '{req.mode}' invalide.",
-                "supported_modes": ["auto", "browser", "replay"],
-            },
-        )
-
-    agg = cls(browser=browser, llm=llm, db=db)
-
-    # Validate the network against this aggregator's supported list. On failure,
-    # echo back the exact accepted values (422).
-    canonical_network = agg.normalize_network(req.network)
-    if canonical_network is None:
-        raise HTTPException(
-            422,
-            {
-                "error": "invalid_network",
-                "message": f"Réseau '{req.network}' non supporté par l'agrégateur '{req.aggregator}'.",
-                "aggregator": req.aggregator,
-                "supported_networks": agg.supported_networks,
-            },
-        )
-
-    payment = PaymentRequest(
-        amount=req.amount,
-        phone=req.phone,
-        network=canonical_network,
-        email=req.email,
-        sender_name=req.sender_name,
-        callback_url=req.callback_url,
-    )
-
-    await _guard_duplicate(req)
-
-    async def _run_browser_and_save():
-        """Browser flow + persist the curl template deduced during the run.
-
-        The runner builds res.curl_template while it still holds the (now
-        isolated) browser session; we just persist it here.
-        """
-        res = await agg.pay_via_browser(payment, tx_id=tx_id)
-        if res.curl_template:
-            await db.save_template(req.aggregator, res.curl_template)
-        return res
-
-    # Resolve the template / 409 paths BEFORE creating the pending row, so a
-    # rejected request never leaves a dangling 'pending' transaction.
-    template = None
-    if req.mode == "replay":
-        template = await db.load_template(req.aggregator)
-        if template is None:
-            raise HTTPException(
-                409,
-                f"No stored curl template for '{req.aggregator}'. Run mode='browser' once to deduce it.",
-            )
-    elif req.mode == "auto":
-        template = await db.load_template(req.aggregator)
-        if template is None and not req.fallback_browser:
-            raise HTTPException(
-                409,
-                f"No template for '{req.aggregator}' and fallback_browser=false. Run mode='browser' first.",
-            )
-
-    # Insert the audit row as 'pending' now; update it with the verdict at the end.
-    # Rattaché à l'app/clé authentifiée (isolation) + end_user_ref du client.
-    tx_id = await db.insert_pending(
-        req.aggregator, req.mode, payment,
-        app_id=ctx.app_id, api_key_id=ctx.api_key_id, end_user_ref=req.end_user_ref,
-    )
-    result = None
-    engine_used = "replay"  # quel moteur a réellement produit le résultat
-    try:
-        if req.mode == "replay":
-            result = await agg.replay(payment, template)
-            engine_used = "replay"
-        elif req.mode == "browser":
-            result = await _run_browser_and_save()
-            engine_used = "browser"
-        else:  # auto: replay first, fall back to browser if inconclusive
-            if template is not None:
-                try:
-                    result = await agg.replay(payment, template)
-                    engine_used = "replay"
-                except Exception as e:  # noqa: BLE001
-                    log.warning("auto: replay raised (%s)", e)
-                    result = None
-                inconclusive = result is None or result.final_status in ("unknown", "timeout", "error", "")
-                if inconclusive and req.fallback_browser:
-                    log.info("auto: replay inconclusive -> falling back to browser")
-                    result = await _run_browser_and_save()
-                    engine_used = "browser"
-                elif result is None:
-                    raise HTTPException(502, "Replay failed and browser fallback disabled (fallback_browser=false)")
-            else:
-                result = await _run_browser_and_save()
-                engine_used = "browser"
-    finally:
-        result = _settle(result, engine_used)
-        await db.update_transaction(tx_id, result)
-        # Notifie l'app du verdict (webhook signé, non bloquant, idempotent).
-        notify_settled(
-            tx_id, result, transaction_ref=result.transaction_id,
-            amount=req.amount, network=req.network, phone=req.phone,
-            end_user_ref=req.end_user_ref,
-            provider_transaction_id=result.provider_transaction_id,
-        )
-
-    # Panne amont (API agrégateur OU réseau opérateur) : on a tracé le détail en
-    # BD + logs ci-dessus ; au dev intégrateur on renvoie un 503 propre avec un
-    # code stable + message FR, SANS exposer l'URL interne ni la stacktrace. Même
-    # forme de réponse quel que soit le moteur (browser/replay) et le type de panne.
-    if result.error_code in UPSTREAM_CODES:
-        log.warning("Upstream indisponible (tx_id=%s, code=%s): %s",
-                    tx_id, result.error_code, result.error or result.final_message)
-        raise HTTPException(
-            503,
-            {"code": result.error_code, "message": UPSTREAM_MESSAGES[result.error_code]},
-        )
-
-    return _render_response(result, debug)
+    return await _execute_payment(req, ctx.app_id, ctx.api_key_id, debug)
 
 
 async def _guard_duplicate(req: PayRequest) -> None:
