@@ -16,6 +16,11 @@ class PayRequest(BaseModel):
         True,
         description="En mode auto : basculer sur le navigateur si le replay est non concluant.",
     )
+    end_user_ref: str | None = Field(
+        None,
+        description="Identifiant opaque de votre utilisateur final (ex. votre user_id). "
+                    "Stocké tel quel pour vos rapprochements ; facultatif.",
+    )
 
     model_config = {
         "json_schema_extra": {

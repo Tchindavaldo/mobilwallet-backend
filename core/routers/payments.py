@@ -2,10 +2,11 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from core import registry, runtime
+from core.auth import AuthContext, require_api_key
 from core.base import PaymentRequest, PaymentResult
 from core.config import settings
 from core.db import db
@@ -35,9 +36,13 @@ router = APIRouter()
 )
 async def pay(
     req: PayRequest,
+    ctx: AuthContext = Depends(require_api_key),
     debug: bool = Query(False, include_in_schema=False),
 ):
     """Exécute un paiement via l'agrégateur et le mode demandés.
+
+    Authentifié par clé API (`Authorization: Bearer <clé>`). La transaction est
+    rattachée à l'app de la clé (isolation) ; `end_user_ref` est conservé tel quel.
 
     - **auto** (défaut) : replay d'abord ; bascule navigateur si non concluant
       (selon `fallback_browser`).
@@ -126,7 +131,11 @@ async def pay(
             )
 
     # Insert the audit row as 'pending' now; update it with the verdict at the end.
-    tx_id = await db.insert_pending(req.aggregator, req.mode, payment)
+    # Rattaché à l'app/clé authentifiée (isolation) + end_user_ref du client.
+    tx_id = await db.insert_pending(
+        req.aggregator, req.mode, payment,
+        app_id=ctx.app_id, api_key_id=ctx.api_key_id, end_user_ref=req.end_user_ref,
+    )
     result = None
     engine_used = "replay"  # quel moteur a réellement produit le résultat
     try:

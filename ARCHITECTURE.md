@@ -39,7 +39,12 @@ ai_browser2/
 │   │   ├── templates.py          /aggregators/{name}/template (consulter/poser le replay).
 │   │   ├── webhooks.py           /webhook/digikuntz (callback statut entrant).
 │   │   └── dev.py                /drive, /test-llm.
-│   ├── schemas/                  Modèles Pydantic par domaine (payments, system, templates, dev).
+│   │   └── admin.py             /admin/* : gestion developers/apps/clés (require_admin).
+│   ├── schemas/                  Modèles Pydantic par domaine (payments, system, templates, dev, admin).
+│   ├── auth.py                   Auth multi-tenant : génération/hash des clés API, AuthContext,
+│   │                             cache TTL, dépendances require_api_key / require_admin.
+│   ├── tenants.py                Persistance multi-tenant (developers/apps/api_keys) : résolution
+│   │                             de clé (vue api_key_context), CRUD admin, isolation par app.
 │   ├── base.py                   Contrat `Aggregator` (ABC) + dataclasses PaymentRequest /
 │   │                             PaymentResult (porte error_code, curl_template, errors…) / CurlTemplate.
 │   ├── registry.py               Registre nom -> instance d'agrégateur (register / get / names).
@@ -88,7 +93,9 @@ ai_browser2/
 │       ├── 005_cancelled_at.sql        Horodate le passage à 'cancelled' (audit).
 │       ├── 006_ussd_sent_at.sql        Horodate l'envoi USSD (anti-doublon cancelled).
 │       ├── 007_validated_at.sql        Horodate la validation USSD (anti-doublon après succès).
-│       └── 008_settled_by.sql          Qui a settlé le verdict : 'polling' | 'webhook'.
+│       ├── 008_settled_by.sql          Qui a settlé le verdict : 'polling' | 'webhook'.
+│       ├── 009_multitenant_tables.sql  developers/apps/api_keys + vue api_key_context.
+│       └── 010_transactions_tenant_columns.sql  transactions.app_id/api_key_id/end_user_ref.
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── scripts/dump_openapi.py       Dump du schéma OpenAPI.

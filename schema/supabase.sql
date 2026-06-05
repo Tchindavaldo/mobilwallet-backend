@@ -1,5 +1,12 @@
 -- MobileWallet backend — Supabase schema.
 -- Run in the Supabase SQL editor (or via migration) before enabling persistence.
+--
+-- Tables de base ci-dessous (transactions, curl_templates). Les évolutions
+-- vivent dans schema/migrations/NNN_*.sql, notamment :
+--   001 transaction_traces · 002 app_settings · 003 transaction_errors
+--   009 developers / apps / api_keys (+ vue api_key_context) — multi-tenant
+--   010 transactions.app_id / api_key_id / end_user_ref — rattachement tenant
+-- (ne pas empiler les évolutions ici : une migration = un fichier dédié.)
 
 -- Per-payment audit trail.
 create table if not exists transactions (

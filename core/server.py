@@ -24,7 +24,7 @@ from core.browser import BrowserController
 from core.config import settings
 from core.db import db
 from core.llm_client import LlmClient, LlmConfig
-from core.routers import dev, payments, system, templates, transactions, webhooks
+from core.routers import admin, dev, payments, system, templates, transactions, webhooks
 
 logging.basicConfig(
     level=logging.INFO,
@@ -103,4 +103,28 @@ app.include_router(webhooks.router)
 app.include_router(payments.router)
 app.include_router(transactions.router)
 app.include_router(templates.router)
+app.include_router(admin.router)
 app.include_router(dev.router)
+
+
+def _custom_openapi():
+    """Documente les schémas d'auth dans Swagger : clé API (Bearer) pour les
+    routes tenant, clé admin (header X-Admin-Key) pour la gestion."""
+    if app.openapi_schema:
+        return app.openapi_schema
+    from fastapi.openapi.utils import get_openapi
+    schema = get_openapi(
+        title=app.title, version=app.version,
+        description=app.description, tags=app.openapi_tags, routes=app.routes,
+    )
+    schema.setdefault("components", {})["securitySchemes"] = {
+        "ApiKey": {"type": "http", "scheme": "bearer",
+                   "description": "Clé API d'app : Authorization: Bearer <clé>."},
+        "AdminKey": {"type": "apiKey", "in": "header", "name": "X-Admin-Key",
+                     "description": "Clé admin pour la gestion des developers/apps/clés."},
+    }
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = _custom_openapi
