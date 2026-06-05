@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from core import registry, runtime
 from core.auth import AuthContext, require_api_key
 from core.base import PaymentRequest, PaymentResult
+from core.notifications import notify_settled
 from core.config import settings
 from core.db import db
 from core.error_tracking import build_errors
@@ -166,6 +167,13 @@ async def pay(
     finally:
         result = _settle(result, engine_used)
         await db.update_transaction(tx_id, result)
+        # Notifie l'app du verdict (webhook signé, non bloquant, idempotent).
+        notify_settled(
+            tx_id, result, transaction_ref=result.transaction_id,
+            amount=req.amount, network=req.network, phone=req.phone,
+            end_user_ref=req.end_user_ref,
+            provider_transaction_id=result.provider_transaction_id,
+        )
 
     # Panne amont (API agrégateur OU réseau opérateur) : on a tracé le détail en
     # BD + logs ci-dessus ; au dev intégrateur on renvoie un 503 propre avec un

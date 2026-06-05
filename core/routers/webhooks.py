@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter
 
 from core.db import db
+from core.notifications import notify_settled
 
 log = logging.getLogger("ai_browser2")
 
@@ -38,4 +39,12 @@ async def digikuntz_webhook(payload: dict):
         if row:
             await db.update_status_by_provider_id(provider_id, internal,
                                                   message=f"Webhook DigiKUNTZ: {raw}")
+            # Notifie l'app du verdict (idempotent : si le polling a déjà notifié
+            # ce (tx, event), la réservation l'empêche d'envoyer en double).
+            notify_settled(
+                row["id"], internal, transaction_ref=row.get("transaction_ref", ""),
+                amount=row.get("amount", 0), network=row.get("network", ""),
+                phone=row.get("phone", ""), end_user_ref=row.get("end_user_ref"),
+                provider_transaction_id=provider_id,
+            )
     return {"received": True}

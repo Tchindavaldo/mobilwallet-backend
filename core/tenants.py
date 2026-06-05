@@ -160,6 +160,71 @@ async def list_transactions_for_app(app_id: int, limit: int = 50) -> list[dict]:
     return await db._run(_select) or []
 
 
+async def get_app_for_transaction(tx_id: int) -> dict | None:
+    """Récupère l'app (callback_url, webhook_secret, app_id) d'une transaction,
+    pour notifier son verdict. None si la transaction n'a pas d'app_id ou BD off."""
+    client = _client()
+    if client is None or tx_id is None:
+        return None
+
+    def _select():
+        tx = (client.table("transactions").select("app_id")
+              .eq("id", tx_id).limit(1).execute())
+        if not tx.data or not tx.data[0].get("app_id"):
+            return None
+        app_id = tx.data[0]["app_id"]
+        app = (client.table("apps").select("id, callback_url, webhook_secret")
+               .eq("id", app_id).limit(1).execute())
+        if not app.data:
+            return None
+        a = app.data[0]
+        return {"app_id": a["id"], "callback_url": a.get("callback_url"),
+                "webhook_secret": a.get("webhook_secret")}
+
+    return await db._run(_select)
+
+
+async def reserve_delivery(tx_id: int, app_id: int | None, event: str) -> bool:
+    """Réserve l'envoi d'un (transaction, event) — idempotence via l'unique index.
+
+    Retourne True si la ligne a été créée (à NOUS d'envoyer), False si elle existe
+    déjà (un autre chemin a gagné la course → on n'envoie pas). None/erreur → False.
+    """
+    client = _client()
+    if client is None or tx_id is None:
+        return False
+
+    def _insert():
+        try:
+            res = (client.table("webhook_deliveries")
+                   .insert({"transaction_id": tx_id, "app_id": app_id, "event": event})
+                   .execute())
+            return bool(res.data)
+        except Exception:  # conflit unique = déjà réservé par l'autre chemin
+            return False
+
+    return bool(await db._run(_insert))
+
+
+async def mark_delivery(tx_id: int, event: str, *, delivered: bool,
+                        attempts: int, error: str = "") -> None:
+    """Met à jour l'issue d'un envoi (delivered/failed + attempts)."""
+    client = _client()
+    if client is None:
+        return
+    patch = {"status": "delivered" if delivered else "failed", "attempts": attempts}
+    if delivered:
+        patch["delivered_at"] = "now()"
+    if error:
+        patch["last_error"] = error[:500]
+
+    def _update():
+        (client.table("webhook_deliveries").update(patch)
+         .eq("transaction_id", tx_id).eq("event", event).execute())
+
+    await db._run(_update)
+
+
 async def get_transaction_scoped(transaction_ref: str, app_id: int) -> dict | None:
     """Transaction par référence, bornée à l'app appelante : None si elle
     n'existe pas OU appartient à une autre app (on ne révèle pas son existence)."""

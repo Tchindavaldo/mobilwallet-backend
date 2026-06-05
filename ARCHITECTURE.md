@@ -44,7 +44,10 @@ ai_browser2/
 │   ├── auth.py                   Auth multi-tenant : génération/hash des clés API, AuthContext,
 │   │                             cache TTL, dépendances require_api_key / require_admin.
 │   ├── tenants.py                Persistance multi-tenant (developers/apps/api_keys) : résolution
-│   │                             de clé (vue api_key_context), CRUD admin, isolation par app.
+│   │                             de clé (vue api_key_context), CRUD admin, isolation par app,
+│   │                             webhook_deliveries (réservation idempotente du verdict).
+│   ├── notifications.py          Webhook sortant signé (HMAC) du verdict vers le callback_url de
+│   │                             l'app : non bloquant (tâche de fond), idempotent, retries.
 │   ├── base.py                   Contrat `Aggregator` (ABC) + dataclasses PaymentRequest /
 │   │                             PaymentResult (porte error_code, curl_template, errors…) / CurlTemplate.
 │   ├── registry.py               Registre nom -> instance d'agrégateur (register / get / names).
@@ -95,7 +98,8 @@ ai_browser2/
 │       ├── 007_validated_at.sql        Horodate la validation USSD (anti-doublon après succès).
 │       ├── 008_settled_by.sql          Qui a settlé le verdict : 'polling' | 'webhook'.
 │       ├── 009_multitenant_tables.sql  developers/apps/api_keys + vue api_key_context.
-│       └── 010_transactions_tenant_columns.sql  transactions.app_id/api_key_id/end_user_ref.
+│       ├── 010_transactions_tenant_columns.sql  transactions.app_id/api_key_id/end_user_ref.
+│       └── 011_webhook_deliveries.sql  Journal d'envoi webhook (idempotence (tx,event)).
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── scripts/dump_openapi.py       Dump du schéma OpenAPI.
