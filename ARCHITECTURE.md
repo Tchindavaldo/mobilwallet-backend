@@ -28,9 +28,18 @@ ai_browser2/
 │                                 ⚠️ Tester /pay avec start.sh : le hot-reload coupe les requêtes longues.
 │
 ├── core/                         === MOTEUR GÉNÉRIQUE (agnostique de l'agrégateur) ===
-│   ├── server.py                 FastAPI : endpoints, lifespan (pool navigateur + LLM), routing /pay,
-│   │                             garde anti-doublon par numéro, vue client (PayResponse) vs
-│   │                             admin (PayResponseDebug via ?debug=true), transform 503 upstream.
+│   ├── server.py                 ASSEMBLAGE FastAPI seulement : crée l'app, lifespan (pool
+│   │                             navigateur + LLM dans runtime), monte les routers. Pas de logique.
+│   ├── runtime.py                État partagé entre routers (browser/llm vivants) + helpers
+│   │                             transverses (seconds_since, fmt_duration).
+│   ├── routers/                  UN APIRouter PAR DOMAINE (logique des endpoints) :
+│   │   ├── system.py             /health, /aggregators, /config/max-tabs.
+│   │   ├── payments.py           /pay (dispatch, garde anti-doublon, settle, vues client/debug).
+│   │   ├── transactions.py       /transactions*, /status/{ref}, /cancel.
+│   │   ├── templates.py          /aggregators/{name}/template (consulter/poser le replay).
+│   │   ├── webhooks.py           /webhook/digikuntz (callback statut entrant).
+│   │   └── dev.py                /drive, /test-llm.
+│   ├── schemas/                  Modèles Pydantic par domaine (payments, system, templates, dev).
 │   ├── base.py                   Contrat `Aggregator` (ABC) + dataclasses PaymentRequest /
 │   │                             PaymentResult (porte error_code, curl_template, errors…) / CurlTemplate.
 │   ├── registry.py               Registre nom -> instance d'agrégateur (register / get / names).

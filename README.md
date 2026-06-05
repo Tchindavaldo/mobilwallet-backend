@@ -21,7 +21,10 @@ le curl replay est **propre à chaque agrégateur**.
 ai_browser2/
 ├── main.py                     # lanceur : importe core.server:app, lance uvicorn
 ├── core/                       # MOTEUR GÉNÉRIQUE (partagé)
-│   ├── server.py               #   FastAPI : endpoints + lifespan + routing
+│   ├── server.py               #   assemblage FastAPI : lifespan + montage des routers
+│   ├── runtime.py              #   état partagé (browser/llm) + helpers transverses
+│   ├── routers/                #   un APIRouter par domaine (system, payments, …)
+│   ├── schemas/                #   modèles Pydantic par domaine
 │   ├── base.py                 #   interface Aggregator (ABC) + dataclasses
 │   ├── registry.py             #   registre nom -> classe d'agrégateur
 │   ├── config.py               #   settings centralisés (.env)
@@ -42,8 +45,9 @@ ai_browser2/
 └── requirements.txt
 ```
 
-**3 couches** : `server.py` (API/routing, agnostique) → `base.py` (contrat `Aggregator`) →
-`aggregators/<nom>/` (logique métier). La persistance (`db.py`) est appelée par la couche API.
+**3 couches** : `server.py` + `routers/` (API/routing, agnostique) → `base.py` (contrat
+`Aggregator`) → `aggregators/<nom>/` (logique métier). La persistance (`db.py`) est appelée
+par la couche API.
 
 ---
 
