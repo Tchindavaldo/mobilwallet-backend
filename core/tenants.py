@@ -1,0 +1,365 @@
+"""Persistance multi-tenant : developers / apps / api_keys + résolution & isolation.
+
+Module séparé de core/db.py (qui gère les transactions/templates) pour respecter
+la modularité — il réutilise le même client Supabase via l'instance `db`.
+Toutes les écritures/lectures passent par `db._run(fn)` (thread borné par timeout),
+et dégradent en no-op si Supabase n'est pas configuré.
+"""
+
+import hashlib
+import logging
+
+from core.db import db
+
+log = logging.getLogger("ai_browser2")
+
+
+def _client():
+    """Client Supabase vivant, ou None si la persistance est désactivée."""
+    return db._client if db.enabled else None
+
+
+# --- Comptes developer (auth self-service) -----------------------------------
+
+def hash_refresh(token: str) -> str:
+    """Hash d'un refresh token (sha256 hex) — seul le hash est persisté."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+async def get_developer(developer_id: int) -> dict | None:
+    client = _client()
+    if client is None or developer_id is None:
+        return None
+
+    def _select():
+        res = (client.table("developers")
+               .select("id, email, name, is_active")
+               .eq("id", developer_id).limit(1).execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_select)
+
+
+async def get_developer_by_email(email: str) -> dict | None:
+    client = _client()
+    if client is None or not email:
+        return None
+
+    def _select():
+        res = (client.table("developers")
+               .select("id, email, name, is_active, password_hash")
+               .eq("email", email).limit(1).execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_select)
+
+
+async def create_developer_with_password(email: str, name: str | None,
+                                         password_hash: str) -> dict | None:
+    client = _client()
+    if client is None:
+        return None
+
+    def _insert():
+        res = (client.table("developers")
+               .insert({"email": email, "name": name, "password_hash": password_hash})
+               .execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_insert)
+
+
+# --- Refresh tokens (sessions) ------------------------------------------------
+
+async def store_refresh(developer_id: int, token_hash: str, expires_at_iso: str) -> None:
+    client = _client()
+    if client is None:
+        return
+
+    def _insert():
+        (client.table("refresh_tokens").insert({
+            "developer_id": developer_id, "token_hash": token_hash,
+            "expires_at": expires_at_iso,
+        }).execute())
+
+    await db._run(_insert)
+
+
+async def get_refresh(token_hash: str) -> dict | None:
+    """Refresh token actif (non révoqué) par son hash, ou None."""
+    client = _client()
+    if client is None or not token_hash:
+        return None
+
+    def _select():
+        res = (client.table("refresh_tokens")
+               .select("id, developer_id, expires_at, revoked_at")
+               .eq("token_hash", token_hash).is_("revoked_at", "null").limit(1).execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_select)
+
+
+async def revoke_refresh(token_hash: str) -> None:
+    client = _client()
+    if client is None or not token_hash:
+        return
+
+    def _update():
+        (client.table("refresh_tokens").update({"revoked_at": "now()"})
+         .eq("token_hash", token_hash).execute())
+
+    await db._run(_update)
+
+
+# --- Ownership (le dev n'agit que sur SES apps) -------------------------------
+
+async def app_belongs_to(app_id: int, developer_id: int) -> bool:
+    client = _client()
+    if client is None:
+        return False
+
+    def _select():
+        res = (client.table("apps").select("id")
+               .eq("id", app_id).eq("developer_id", developer_id).limit(1).execute())
+        return bool(res.data)
+
+    return bool(await db._run(_select))
+
+
+# --- Résolution d'une clé (lecture, chemin chaud) -----------------------------
+
+async def resolve_api_key(key_hash: str) -> dict | None:
+    """Résout une clé (par son hash) via la vue api_key_context : renvoie
+    {api_key_id, env, app_id, developer_id, callback_url, webhook_secret,
+    key_active, app_active, dev_active} ou None si inconnue / BD désactivée."""
+    client = _client()
+    if client is None or not key_hash:
+        return None
+
+    def _select():
+        res = (client.table("api_key_context").select("*")
+               .eq("key_hash", key_hash).limit(1).execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_select)
+
+
+# --- CRUD admin (gestion) -----------------------------------------------------
+
+async def create_developer(email: str, name: str | None) -> dict | None:
+    client = _client()
+    if client is None:
+        return None
+
+    def _insert():
+        res = (client.table("developers")
+               .insert({"email": email, "name": name}).execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_insert)
+
+
+async def create_app(developer_id: int, name: str, callback_url: str | None,
+                     webhook_secret: str) -> dict | None:
+    client = _client()
+    if client is None:
+        return None
+
+    def _insert():
+        res = (client.table("apps").insert({
+            "developer_id": developer_id, "name": name,
+            "callback_url": callback_url, "webhook_secret": webhook_secret,
+        }).execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_insert)
+
+
+async def insert_api_key(app_id: int, env: str, key_prefix: str,
+                         key_hash: str, last_four: str) -> dict | None:
+    client = _client()
+    if client is None:
+        return None
+
+    def _insert():
+        res = (client.table("api_keys").insert({
+            "app_id": app_id, "env": env, "key_prefix": key_prefix,
+            "key_hash": key_hash, "last_four": last_four,
+        }).execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_insert)
+
+
+async def revoke_api_key(key_id: int) -> dict | None:
+    """Désactive une clé (idempotent : n'agit que sur une clé encore active).
+    Retourne la ligne révoquée, ou None si déjà inactive / introuvable."""
+    client = _client()
+    if client is None:
+        return None
+
+    def _update():
+        res = (client.table("api_keys")
+               .update({"is_active": False, "revoked_at": "now()"})
+               .eq("id", key_id).eq("is_active", True).execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_update)
+
+
+async def get_api_key(key_id: int) -> dict | None:
+    """Lit une clé par id (sans le hash exposé inutilement)."""
+    client = _client()
+    if client is None:
+        return None
+
+    def _select():
+        res = (client.table("api_keys")
+               .select("id, app_id, env, key_prefix, last_four, is_active, revoked_at, created_at")
+               .eq("id", key_id).limit(1).execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_select)
+
+
+async def get_app(app_id: int) -> dict | None:
+    """Récupère une app par son ID (sans validation de propriété)."""
+    client = _client()
+    if client is None or app_id is None:
+        return None
+
+    def _select():
+        res = (client.table("apps")
+               .select("id, developer_id, name, callback_url, is_active, created_at")
+               .eq("id", app_id).limit(1).execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_select)
+
+
+async def list_apps(developer_id: int) -> list[dict]:
+    client = _client()
+    if client is None:
+        return []
+
+    def _select():
+        res = (client.table("apps")
+               .select("id, developer_id, name, callback_url, is_active, created_at")
+               .eq("developer_id", developer_id).order("created_at", desc=True).execute())
+        return res.data or []
+
+    return await db._run(_select) or []
+
+
+async def list_api_keys(app_id: int) -> list[dict]:
+    """Liste les clés d'une app SANS la clé en clair (jamais ré-exposée)."""
+    client = _client()
+    if client is None:
+        return []
+
+    def _select():
+        res = (client.table("api_keys")
+               .select("id, app_id, env, key_prefix, last_four, is_active, revoked_at, created_at")
+               .eq("app_id", app_id).order("created_at", desc=True).execute())
+        return res.data or []
+
+    return await db._run(_select) or []
+
+
+# --- Isolation des transactions par app --------------------------------------
+
+async def list_transactions_for_app(app_id: int, limit: int = 50) -> list[dict]:
+    """Transactions d'une app donnée (isolation : un dev ne voit que ses apps)."""
+    client = _client()
+    if client is None:
+        return []
+
+    def _select():
+        res = (client.table("transactions").select("*")
+               .eq("app_id", app_id)
+               .order("created_at", desc=True).limit(limit).execute())
+        return res.data or []
+
+    return await db._run(_select) or []
+
+
+async def get_app_for_transaction(tx_id: int) -> dict | None:
+    """Récupère l'app (callback_url, webhook_secret, app_id) d'une transaction,
+    pour notifier son verdict. None si la transaction n'a pas d'app_id ou BD off."""
+    client = _client()
+    if client is None or tx_id is None:
+        return None
+
+    def _select():
+        tx = (client.table("transactions").select("app_id")
+              .eq("id", tx_id).limit(1).execute())
+        if not tx.data or not tx.data[0].get("app_id"):
+            return None
+        app_id = tx.data[0]["app_id"]
+        app = (client.table("apps").select("id, callback_url, webhook_secret")
+               .eq("id", app_id).limit(1).execute())
+        if not app.data:
+            return None
+        a = app.data[0]
+        return {"app_id": a["id"], "callback_url": a.get("callback_url"),
+                "webhook_secret": a.get("webhook_secret")}
+
+    return await db._run(_select)
+
+
+async def reserve_delivery(tx_id: int, app_id: int | None, event: str) -> bool:
+    """Réserve l'envoi d'un (transaction, event) — idempotence via l'unique index.
+
+    Retourne True si la ligne a été créée (à NOUS d'envoyer), False si elle existe
+    déjà (un autre chemin a gagné la course → on n'envoie pas). None/erreur → False.
+    """
+    client = _client()
+    if client is None or tx_id is None:
+        return False
+
+    def _insert():
+        try:
+            res = (client.table("webhook_deliveries")
+                   .insert({"transaction_id": tx_id, "app_id": app_id, "event": event})
+                   .execute())
+            return bool(res.data)
+        except Exception:  # conflit unique = déjà réservé par l'autre chemin
+            return False
+
+    return bool(await db._run(_insert))
+
+
+async def mark_delivery(tx_id: int, event: str, *, delivered: bool,
+                        attempts: int, error: str = "") -> None:
+    """Met à jour l'issue d'un envoi (delivered/failed + attempts)."""
+    client = _client()
+    if client is None:
+        return
+    patch = {"status": "delivered" if delivered else "failed", "attempts": attempts}
+    if delivered:
+        patch["delivered_at"] = "now()"
+    if error:
+        patch["last_error"] = error[:500]
+
+    def _update():
+        (client.table("webhook_deliveries").update(patch)
+         .eq("transaction_id", tx_id).eq("event", event).execute())
+
+    await db._run(_update)
+
+
+async def get_transaction_scoped(transaction_ref: str, app_id: int) -> dict | None:
+    """Transaction par référence, bornée à l'app appelante : None si elle
+    n'existe pas OU appartient à une autre app (on ne révèle pas son existence)."""
+    client = _client()
+    if client is None:
+        return None
+
+    def _select():
+        res = (client.table("transactions").select("*")
+               .eq("transaction_ref", transaction_ref)
+               .eq("app_id", app_id).limit(1).execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_select)

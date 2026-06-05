@@ -13,6 +13,23 @@ statuts, concurrence). Ça évite de devoir parcourir tout l'arbre pour comprend
 module, endpoint, table, flux) ou rend une description obsolète, **mets à jour
 `ARCHITECTURE.md` ET `README.md`** avant de clore — au même titre que le code.
 
+## Architecture & modularité (OBLIGATOIRE)
+
+L'architecture doit rester **propre, moderne, modulaire**. Règles non négociables :
+
+- **Taille de fichier : viser ~400 lignes, 500 = plafond DUR.** Au-delà de 500,
+  découper obligatoirement. Un fichier doit se lire d'un coup (par un humain ET
+  par l'agent qui doit le parcourir). Si un fichier que tu touches dépasse, scinde-le
+  avant de clore.
+- **Un fichier = une responsabilité claire.** On découpe en modules par domaine ;
+  on n'empile jamais dans un gros fichier fourre-tout.
+- **Routes FastAPI : un `APIRouter` par domaine** sous `core/routers/` ; modèles
+  Pydantic sous `core/schemas/`. `core/server.py` ne fait QUE l'assemblage (créer
+  l'app, lifespan, `include_router`) — jamais de logique métier. L'état partagé
+  (browser/llm) vit dans `core/runtime.py`.
+- Toute nouvelle route/évolution s'ajoute **dans le module de son domaine**, pas
+  dans un fichier déjà gros.
+
 ## Convention de branches (OBLIGATOIRE)
 
 Toujours préfixer les branches selon leur nature :

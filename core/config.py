@@ -48,6 +48,23 @@ class Settings:
     supabase_url: str = field(default_factory=lambda: _env("SUPABASE_URL"))
     supabase_key: str = field(default_factory=lambda: _env("SUPABASE_KEY"))
 
+    # Auth multi-tenant. admin_api_key protège les endpoints de gestion
+    # (developers/apps/clés) via le header X-Admin-Key. api_key_cache_ttl_s : durée
+    # de mise en cache mémoire d'une clé résolue (évite de taper Supabase à chaque
+    # requête ; révocation effective au plus tard après ce délai). public_base_url :
+    # URL publique du backend (webhooks, liens). Secrets via env, jamais en dur.
+    admin_api_key: str = field(default_factory=lambda: _env("ADMIN_API_KEY"))
+    api_key_cache_ttl_s: int = field(default_factory=lambda: int(_env("API_KEY_CACHE_TTL_S", "60")))
+    public_base_url: str = field(
+        default_factory=lambda: _env("PUBLIC_BASE_URL", "https://mobilwallet-backend.fly.dev"))
+
+    # Auth compte developer (self-service) : JWT d'accès court + refresh long.
+    # jwt_secret signe les access tokens (secret Fly, jamais en dur).
+    jwt_secret: str = field(default_factory=lambda: _env("JWT_SECRET"))
+    jwt_access_ttl_s: int = field(default_factory=lambda: int(_env("JWT_ACCESS_TTL_S", "3600")))
+    jwt_refresh_ttl_s: int = field(
+        default_factory=lambda: int(_env("JWT_REFRESH_TTL_S", str(30 * 24 * 3600))))
+
     # Runtime
     headless: bool = field(default_factory=lambda: _env("HEADLESS", "0") == "1")
     port: int = field(default_factory=lambda: int(_env("PORT", "7332")))

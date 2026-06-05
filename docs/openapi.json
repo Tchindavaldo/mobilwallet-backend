@@ -104,23 +104,495 @@
         }
       }
     },
+    "/signup": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Créer un compte developer",
+        "description": "Inscription ouverte : crée le compte (mot de passe hashé) et connecte le dev.",
+        "operationId": "signup_signup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenPair"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Connexion developer",
+        "operationId": "login_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenPair"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/refresh": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Renouveler les jetons",
+        "description": "Échange un refresh token valide contre un nouveau couple (rotation :\nl'ancien refresh est révoqué).",
+        "operationId": "refresh_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenPair"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Déconnexion (révoque le refresh token)",
+        "operationId": "logout_logout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/apps": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Créer une app (projet)",
+        "description": "Crée une app pour VOTRE compte. Génère son webhook_secret HMAC (non exposé).",
+        "operationId": "create_app_apps_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppCreateSelf"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "JWT manquant ou invalide."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Lister vos apps",
+        "operationId": "list_apps_apps_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "JWT manquant ou invalide."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/apps/{app_id}/keys": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Générer une clé API (clé en clair montrée une seule fois)",
+        "operationId": "create_key_apps__app_id__keys_post",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "JWT manquant ou invalide."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Lister les clés d'une app (sans la clé en clair)",
+        "operationId": "list_keys_apps__app_id__keys_get",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "JWT manquant ou invalide."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/apps/{app_id}/keys/{key_id}/revoke": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Révoquer une clé API",
+        "operationId": "revoke_key_apps__app_id__keys__key_id__revoke_post",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "JWT manquant ou invalide."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/pay": {
       "post": {
         "tags": [
           "payments"
         ],
         "summary": "Exécuter un paiement",
-        "description": "Exécute un paiement via l'agrégateur et le mode demandés.\n\n- **auto** (défaut) : replay d'abord ; bascule navigateur si non concluant\n  (selon `fallback_browser`).\n- **browser** : flux IA complet ; déduit et persiste le template curl.\n- **replay** : rejoue via le template stocké (409 si absent).",
+        "description": "Exécute un paiement via l'agrégateur et le mode demandés.\n\nAuthentifié par clé API (`Authorization: Bearer <clé>`). La transaction est\nrattachée à l'app de la clé (isolation) ; `end_user_ref` est conservé tel quel.\n\n- **auto** (défaut) : replay d'abord ; bascule navigateur si non concluant\n  (selon `fallback_browser`).\n- **browser** : flux IA complet ; déduit et persiste le template curl.\n- **replay** : rejoue via le template stocké (409 si absent).",
         "operationId": "pay_pay_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PayRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -154,22 +626,82 @@
         }
       }
     },
-    "/transactions/{tx_id}/cancel": {
-      "post": {
+    "/transactions": {
+      "get": {
         "tags": [
           "transactions"
         ],
-        "summary": "Débloquer une transaction pending",
-        "description": "Force une transaction restée **pending** à **cancelled**.\n\nSert à débloquer une transaction coincée (ex: serveur interrompu avant le\nverdict) qui empêcherait un nouveau paiement sur le même numéro\n(`409 pending_exists`). N'agit que sur une ligne encore `pending` — ne\nréécrit jamais un verdict déjà acté.",
-        "operationId": "cancel_transaction_transactions__tx_id__cancel_post",
+        "summary": "Historique des transactions",
+        "description": "Dernières transactions de VOTRE app (isolation par clé API).",
+        "operationId": "list_transactions_transactions_get",
         "parameters": [
           {
-            "name": "tx_id",
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/status/{transaction_ref}": {
+      "get": {
+        "tags": [
+          "transactions"
+        ],
+        "summary": "Statut d'une transaction",
+        "description": "Récupère une transaction de votre app par sa référence.",
+        "operationId": "transaction_status_status__transaction_ref__get",
+        "parameters": [
+          {
+            "name": "transaction_ref",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "integer",
-              "title": "Tx Id"
+              "type": "string",
+              "title": "Transaction Ref"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
             }
           }
         ],
@@ -183,7 +715,166 @@
             }
           },
           "404": {
-            "description": "Aucune transaction 'pending' avec cet id."
+            "description": "Aucune transaction pour cette référence."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transactions/{transaction_ref}/trace": {
+      "get": {
+        "tags": [
+          "transactions"
+        ],
+        "summary": "Trace IA d'une transaction (mode browser)",
+        "description": "Trace tour-par-tour de l'agent IA pour une transaction browser de votre app.\n\nChaque entrée : ce que l'IA a vu (url, nb d'éléments), sa pensée, les actions\njouées, et si l'objectif a été atteint. Vide pour un paiement en mode replay.",
+        "operationId": "transaction_trace_transactions__transaction_ref__trace_get",
+        "parameters": [
+          {
+            "name": "transaction_ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Transaction Ref"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Aucune transaction pour cette référence."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transactions/{transaction_ref}/errors": {
+      "get": {
+        "tags": [
+          "transactions"
+        ],
+        "summary": "Erreurs détaillées d'une transaction (browser/replay)",
+        "description": "Erreurs détaillées d'une transaction de votre app.\n\nChaque entrée précise le moteur (`engine`: browser/replay) et la SOURCE\n(`source`: ai / browser / transaction / replay) pour savoir exactement où ça\na cassé, plus la catégorie, le message clair et les détails. Vide si la\ntransaction a réussi.",
+        "operationId": "transaction_errors_transactions__transaction_ref__errors_get",
+        "parameters": [
+          {
+            "name": "transaction_ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Transaction Ref"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Aucune transaction pour cette référence."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transactions/{tx_id}/cancel": {
+      "post": {
+        "tags": [
+          "transactions"
+        ],
+        "summary": "Débloquer une transaction pending",
+        "description": "Force une transaction restée **pending** à **cancelled** (de votre app).\n\nSert à débloquer une transaction coincée (ex: serveur interrompu avant le\nverdict) qui empêcherait un nouveau paiement sur le même numéro\n(`409 pending_exists`). N'agit que sur une ligne encore `pending` de votre\napp — ne réécrit jamais un verdict déjà acté.",
+        "operationId": "cancel_transaction_transactions__tx_id__cancel_post",
+        "parameters": [
+          {
+            "name": "tx_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tx Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Aucune transaction 'pending' (de votre app) avec cet id."
           },
           "503": {
             "description": "Supabase non configuré."
@@ -200,10 +891,675 @@
           }
         }
       }
+    },
+    "/admin/developers": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Créer un developer (compte intégrateur)",
+        "operationId": "create_developer_admin_developers_post",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeveloperCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/apps": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Créer une app pour un developer",
+        "description": "Génère le `webhook_secret` HMAC de l'app (utilisé pour signer les webhooks).\nLe secret n'est pas renvoyé ; il sert côté serveur à la signature.",
+        "operationId": "create_app_admin_apps_post",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/developers/{developer_id}/apps": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Lister les apps d'un developer",
+        "operationId": "list_apps_admin_developers__developer_id__apps_get",
+        "parameters": [
+          {
+            "name": "developer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Developer Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/apps/{app_id}/keys": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Générer une clé API pour une app (clé en clair montrée 1 fois)",
+        "operationId": "create_key_admin_apps__app_id__keys_post",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Lister les clés d'une app (sans la clé en clair)",
+        "operationId": "list_keys_admin_apps__app_id__keys_get",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/apps/{app_id}/keys/{key_id}/revoke": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Révoquer une clé API",
+        "description": "Désactive la clé (effet immédiat : purge aussi le cache de résolution).",
+        "operationId": "revoke_key_admin_apps__app_id__keys__key_id__revoke_post",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/apps/{app_id}/pay": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Lancer un paiement pour une app (sans clé API)",
+        "description": "Exécute un paiement pour l'app `app_id` sans passer par une clé API.\n\nLa transaction est rattachée à l'app (isolation) avec `api_key_id=None`\npour traçabilité (lancé par admin). Même logique que `POST /pay`.",
+        "operationId": "admin_pay_admin_apps__app_id__pay_post",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPayRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Service de paiement amont temporairement indisponible."
+          },
+          "404": {
+            "description": "Agrégateur inconnu ou app introuvable."
+          },
+          "400": {
+            "description": "Mode invalide."
+          },
+          "422": {
+            "description": "Réseau non supporté."
+          },
+          "409": {
+            "description": "Doublon ou mode replay sans template."
+          },
+          "502": {
+            "description": "Replay échoué et fallback navigateur désactivé."
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AdminPayRequest": {
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "title": "Amount",
+            "description": "Montant en XAF.",
+            "examples": [
+              25
+            ]
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone",
+            "description": "Numéro Mobile Money (sans +237).",
+            "examples": [
+              "696080087"
+            ]
+          },
+          "network": {
+            "type": "string",
+            "title": "Network",
+            "description": "Réseau : Orangemoney ou MTN.",
+            "examples": [
+              "Orangemoney"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "Email du payeur.",
+            "examples": [
+              "client@example.com"
+            ]
+          },
+          "sender_name": {
+            "type": "string",
+            "title": "Sender Name",
+            "description": "Nom affiché de l'émetteur.",
+            "default": "Rauvalia"
+          },
+          "callback_url": {
+            "type": "string",
+            "title": "Callback Url",
+            "description": "URL de callback (défaut: celle de l'app).",
+            "default": ""
+          },
+          "aggregator": {
+            "type": "string",
+            "title": "Aggregator",
+            "description": "Nom de l'agrégateur (cf. GET /aggregators).",
+            "default": "digikuntz"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "auto | browser | replay.",
+            "default": "auto",
+            "examples": [
+              "auto"
+            ]
+          },
+          "fallback_browser": {
+            "type": "boolean",
+            "title": "Fallback Browser",
+            "description": "En mode auto : basculer sur le navigateur si le replay est non concluant.",
+            "default": true
+          },
+          "end_user_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End User Ref",
+            "description": "Identifiant opaque de l'utilisateur final (ex. votre user_id). Stocké tel quel pour vos rapprochements ; facultatif."
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount",
+          "phone",
+          "network",
+          "email"
+        ],
+        "title": "AdminPayRequest",
+        "description": "Requête de paiement lancée par un admin pour une app spécifique."
+      },
+      "ApiKeyCreate": {
+        "properties": {
+          "env": {
+            "type": "string",
+            "title": "Env",
+            "description": "Environnement de la clé : 'test' ou 'live'.",
+            "default": "test",
+            "examples": [
+              "test"
+            ]
+          }
+        },
+        "type": "object",
+        "title": "ApiKeyCreate"
+      },
+      "ApiKeyCreated": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "app_id": {
+            "type": "integer",
+            "title": "App Id"
+          },
+          "env": {
+            "type": "string",
+            "title": "Env"
+          },
+          "api_key": {
+            "type": "string",
+            "title": "Api Key",
+            "description": "Clé complète — affichée une seule fois, à stocker maintenant."
+          },
+          "key_prefix": {
+            "type": "string",
+            "title": "Key Prefix"
+          },
+          "last_four": {
+            "type": "string",
+            "title": "Last Four"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "app_id",
+          "env",
+          "api_key",
+          "key_prefix",
+          "last_four"
+        ],
+        "title": "ApiKeyCreated",
+        "description": "Réponse à la création d'une clé : la clé en clair n'est montrée QU'ICI."
+      },
+      "AppCreate": {
+        "properties": {
+          "developer_id": {
+            "type": "integer",
+            "title": "Developer Id",
+            "description": "Id du developer propriétaire."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Nom de l'app.",
+            "examples": [
+              "Acme Checkout"
+            ]
+          },
+          "callback_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callback Url",
+            "description": "URL webhook serveur-à-serveur pour recevoir le verdict des paiements."
+          }
+        },
+        "type": "object",
+        "required": [
+          "developer_id",
+          "name"
+        ],
+        "title": "AppCreate"
+      },
+      "AppCreateSelf": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Nom de l'app/projet.",
+            "examples": [
+              "Acme Checkout"
+            ]
+          },
+          "callback_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callback Url",
+            "description": "URL webhook serveur-à-serveur pour recevoir le verdict des paiements."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "AppCreateSelf",
+        "description": "Création d'une app par le dev (le developer_id vient du JWT, pas du corps)."
+      },
+      "DeveloperCreate": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "Email du developer (unique).",
+            "examples": [
+              "dev@acme.com"
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Nom du developer / société."
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "DeveloperCreate"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -216,6 +1572,27 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "examples": [
+              "dev@acme.com"
+            ]
+          },
+          "password": {
+            "type": "string",
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest"
       },
       "MaxTabsRequest": {
         "properties": {
@@ -302,6 +1679,18 @@
             "title": "Fallback Browser",
             "description": "En mode auto : basculer sur le navigateur si le replay est non concluant.",
             "default": true
+          },
+          "end_user_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End User Ref",
+            "description": "Identifiant opaque de votre utilisateur final (ex. votre user_id). Stocké tel quel pour vos rapprochements ; facultatif."
           }
         },
         "type": "object",
@@ -363,6 +1752,87 @@
         "title": "PayResponse",
         "description": "Vue CLIENT (dev qui intègre l'API) — strictement l'essentiel métier.\n\nTout le détail technique (charge_url, plaintext, curl, trace, tokens…) est\nréservé à l'admin (voir PayResponseDebug + ?debug=true). Ne JAMAIS ajouter de\nchamp interne ici."
       },
+      "RefreshRequest": {
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "title": "Refresh Token",
+            "description": "Refresh token obtenu au login/signup."
+          }
+        },
+        "type": "object",
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshRequest"
+      },
+      "SignupRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "Email du developer (unique).",
+            "examples": [
+              "dev@acme.com"
+            ]
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "title": "Password",
+            "description": "Mot de passe (8 caractères min)."
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Nom du developer / société."
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "SignupRequest"
+      },
+      "TokenPair": {
+        "properties": {
+          "developer_id": {
+            "type": "integer",
+            "title": "Developer Id"
+          },
+          "access_token": {
+            "type": "string",
+            "title": "Access Token",
+            "description": "JWT d'accès (court) — header Authorization: Bearer."
+          },
+          "refresh_token": {
+            "type": "string",
+            "title": "Refresh Token",
+            "description": "Refresh token (long) pour renouveler l'accès."
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "developer_id",
+          "access_token",
+          "refresh_token"
+        ],
+        "title": "TokenPair",
+        "description": "Couple de jetons renvoyé à l'inscription / connexion / rafraîchissement."
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -402,6 +1872,24 @@
           "type"
         ],
         "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "ApiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Clé API d'app (paiements) : Authorization: Bearer <sk_…>."
+      },
+      "DevJWT": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "JWT du compte developer (gestion des projets) : Authorization: Bearer <jwt>."
+      },
+      "AdminKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Admin-Key",
+        "description": "Clé admin pour la supervision des developers/apps/clés."
       }
     }
   },

@@ -21,7 +21,15 @@ le curl replay est **propre à chaque agrégateur**.
 ai_browser2/
 ├── main.py                     # lanceur : importe core.server:app, lance uvicorn
 ├── core/                       # MOTEUR GÉNÉRIQUE (partagé)
-│   ├── server.py               #   FastAPI : endpoints + lifespan + routing
+│   ├── server.py               #   assemblage FastAPI + montage Socket.IO (export `asgi`)
+│   ├── runtime.py              #   état partagé (browser/llm) + helpers transverses
+│   ├── routers/                #   un APIRouter par domaine (system, payments, admin, …)
+│   ├── schemas/                #   modèles Pydantic par domaine
+│   ├── auth.py                 #   auth des clés API d'app (paiements) + require_admin
+│   ├── dev_auth.py             #   auth du compte dev (self-service) : bcrypt + JWT + require_dev
+│   ├── tenants.py              #   persistance multi-tenant + comptes/refresh + isolation
+│   ├── notifications.py        #   verdict -> client : webhook signé + push Socket.IO
+│   ├── realtime.py             #   serveur Socket.IO (rooms par app, auth par clé)
 │   ├── base.py                 #   interface Aggregator (ABC) + dataclasses
 │   ├── registry.py             #   registre nom -> classe d'agrégateur
 │   ├── config.py               #   settings centralisés (.env)
@@ -42,8 +50,9 @@ ai_browser2/
 └── requirements.txt
 ```
 
-**3 couches** : `server.py` (API/routing, agnostique) → `base.py` (contrat `Aggregator`) →
-`aggregators/<nom>/` (logique métier). La persistance (`db.py`) est appelée par la couche API.
+**3 couches** : `server.py` + `routers/` (API/routing, agnostique) → `base.py` (contrat
+`Aggregator`) → `aggregators/<nom>/` (logique métier). La persistance (`db.py`) est appelée
+par la couche API.
 
 ---
 

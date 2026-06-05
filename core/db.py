@@ -116,9 +116,16 @@ class Database:
             return None
 
     async def insert_pending(
-        self, aggregator: str, mode: str, req: PaymentRequest
+        self, aggregator: str, mode: str, req: PaymentRequest,
+        *, app_id: int | None = None, api_key_id: int | None = None,
+        end_user_ref: str | None = None,
     ) -> int | None:
-        """Insert the transaction as 'pending' at the start; return its id."""
+        """Insert the transaction as 'pending' at the start; return its id.
+
+        Les champs tenant (app_id/api_key_id/end_user_ref) rattachent la
+        transaction à l'app authentifiée ; None quand l'appel n'est pas
+        authentifié (ex. tests internes) — les colonnes sont nullable.
+        """
         if not self.enabled:
             return None
         row = {
@@ -131,6 +138,12 @@ class Database:
             "status": "pending",
             "success": False,
         }
+        if app_id is not None:
+            row["app_id"] = app_id
+        if api_key_id is not None:
+            row["api_key_id"] = api_key_id
+        if end_user_ref is not None:
+            row["end_user_ref"] = end_user_ref
 
         def _insert():
             res = self._client.table("transactions").insert(row).execute()
@@ -345,10 +358,12 @@ class Database:
             log.warning("get_traces failed: %s", e)
             return []
 
-    async def cancel_pending(self, tx_id: int) -> dict | None:
+    async def cancel_pending(self, tx_id: int, *, app_id: int | None = None) -> dict | None:
         """Force-settle a stuck 'pending' transaction to 'cancelled'.
 
         Only acts on rows still 'pending' (never overwrites a settled verdict).
+        Si `app_id` est fourni, l'opération est bornée à cette app (isolation :
+        un dev ne débloque que ses propres transactions).
         Returns the updated row, or None if not found / not pending / disabled.
         """
         if not self.enabled or tx_id is None:
@@ -361,13 +376,15 @@ class Database:
         }
 
         def _update():
-            res = (
+            q = (
                 self._client.table("transactions")
                 .update(patch)
                 .eq("id", tx_id)
                 .eq("status", "pending")
-                .execute()
             )
+            if app_id is not None:
+                q = q.eq("app_id", app_id)
+            res = q.execute()
             return res.data[0] if res.data else None
 
         try:
