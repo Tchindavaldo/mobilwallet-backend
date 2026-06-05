@@ -24,7 +24,9 @@ from core.browser import BrowserController
 from core.config import settings
 from core.db import db
 from core.llm_client import LlmClient, LlmConfig
-from core.routers import admin, dev, payments, system, templates, transactions, webhooks
+from core.routers import (
+    admin, auth, dev, payments, projects, system, templates, transactions, webhooks,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -100,6 +102,8 @@ app = FastAPI(
 # Montage des routers par domaine.
 app.include_router(system.router)
 app.include_router(webhooks.router)
+app.include_router(auth.router)
+app.include_router(projects.router)
 app.include_router(payments.router)
 app.include_router(transactions.router)
 app.include_router(templates.router)
@@ -119,9 +123,12 @@ def _custom_openapi():
     )
     schema.setdefault("components", {})["securitySchemes"] = {
         "ApiKey": {"type": "http", "scheme": "bearer",
-                   "description": "Clé API d'app : Authorization: Bearer <clé>."},
+                   "description": "Clé API d'app (paiements) : Authorization: Bearer <sk_…>."},
+        "DevJWT": {"type": "http", "scheme": "bearer",
+                   "description": "JWT du compte developer (gestion des projets) : "
+                                  "Authorization: Bearer <jwt>."},
         "AdminKey": {"type": "apiKey", "in": "header", "name": "X-Admin-Key",
-                     "description": "Clé admin pour la gestion des developers/apps/clés."},
+                     "description": "Clé admin pour la supervision des developers/apps/clés."},
     }
     app.openapi_schema = schema
     return schema

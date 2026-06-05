@@ -25,8 +25,9 @@ ai_browser2/
 │   ├── runtime.py              #   état partagé (browser/llm) + helpers transverses
 │   ├── routers/                #   un APIRouter par domaine (system, payments, admin, …)
 │   ├── schemas/                #   modèles Pydantic par domaine
-│   ├── auth.py                 #   auth multi-tenant (clés API, AuthContext, dépendances)
-│   ├── tenants.py              #   persistance multi-tenant + isolation + webhook_deliveries
+│   ├── auth.py                 #   auth des clés API d'app (paiements) + require_admin
+│   ├── dev_auth.py             #   auth du compte dev (self-service) : bcrypt + JWT + require_dev
+│   ├── tenants.py              #   persistance multi-tenant + comptes/refresh + isolation
 │   ├── notifications.py        #   verdict -> client : webhook signé + push Socket.IO
 │   ├── realtime.py             #   serveur Socket.IO (rooms par app, auth par clé)
 │   ├── base.py                 #   interface Aggregator (ABC) + dataclasses

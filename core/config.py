@@ -58,6 +58,13 @@ class Settings:
     public_base_url: str = field(
         default_factory=lambda: _env("PUBLIC_BASE_URL", "https://mobilwallet-backend.fly.dev"))
 
+    # Auth compte developer (self-service) : JWT d'accès court + refresh long.
+    # jwt_secret signe les access tokens (secret Fly, jamais en dur).
+    jwt_secret: str = field(default_factory=lambda: _env("JWT_SECRET"))
+    jwt_access_ttl_s: int = field(default_factory=lambda: int(_env("JWT_ACCESS_TTL_S", "3600")))
+    jwt_refresh_ttl_s: int = field(
+        default_factory=lambda: int(_env("JWT_REFRESH_TTL_S", str(30 * 24 * 3600))))
+
     # Runtime
     headless: bool = field(default_factory=lambda: _env("HEADLESS", "0") == "1")
     port: int = field(default_factory=lambda: int(_env("PORT", "7332")))

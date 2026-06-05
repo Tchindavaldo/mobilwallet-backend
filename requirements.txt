@@ -6,3 +6,5 @@ pydantic>=2.5
 python-dotenv>=1.0
 supabase>=2.4
 python-socketio>=5.11
+PyJWT>=2.8
+bcrypt>=4.1

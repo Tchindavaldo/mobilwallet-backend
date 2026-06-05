@@ -35,17 +35,22 @@ ai_browser2/
 │   ├── routers/                  UN APIRouter PAR DOMAINE (logique des endpoints) :
 │   │   ├── system.py             /health, /aggregators, /config/max-tabs.
 │   │   ├── payments.py           /pay (dispatch, garde anti-doublon, settle, vues client/debug).
-│   │   ├── transactions.py       /transactions*, /status/{ref}, /cancel.
+│   │   ├── transactions.py       /transactions*, /status/{ref}, /cancel (scopés à l'app).
 │   │   ├── templates.py          /aggregators/{name}/template (consulter/poser le replay).
 │   │   ├── webhooks.py           /webhook/digikuntz (callback statut entrant).
+│   │   ├── auth.py               /signup,/login,/refresh,/logout : compte dev (self-service).
+│   │   ├── projects.py           /apps,/apps/{id}/keys : le dev gère SES apps/clés (require_dev).
+│   │   ├── admin.py              /admin/* : supervision developers/apps/clés (require_admin).
 │   │   └── dev.py                /drive, /test-llm.
-│   │   └── admin.py             /admin/* : gestion developers/apps/clés (require_admin).
-│   ├── schemas/                  Modèles Pydantic par domaine (payments, system, templates, dev, admin).
-│   ├── auth.py                   Auth multi-tenant : génération/hash des clés API, AuthContext,
-│   │                             cache TTL, dépendances require_api_key / require_admin.
-│   ├── tenants.py                Persistance multi-tenant (developers/apps/api_keys) : résolution
-│   │                             de clé (vue api_key_context), CRUD admin, isolation par app,
-│   │                             webhook_deliveries (réservation idempotente du verdict).
+│   ├── schemas/                  Modèles Pydantic par domaine (payments, system, templates, dev,
+│   │                             admin, auth, projects).
+│   ├── auth.py                   Auth des CLÉS API d'app (paiements) : génération/hash des clés,
+│   │                             AuthContext, cache TTL, dépendances require_api_key / require_admin.
+│   ├── dev_auth.py               Auth du COMPTE developer (self-service) : bcrypt + JWT access/
+│   │                             refresh, dépendance require_dev, DevContext.
+│   ├── tenants.py                Persistance multi-tenant (developers/apps/api_keys + comptes/
+│   │                             refresh) : résolution de clé (vue api_key_context), CRUD,
+│   │                             ownership (app_belongs_to), isolation, webhook_deliveries.
 │   ├── notifications.py          Verdict -> client : webhook sortant signé (HMAC) vers le
 │   │                             callback_url + push Socket.IO. Non bloquant, idempotent, retries.
 │   ├── realtime.py               Serveur Socket.IO (monté en ASGI sur FastAPI) : auth de la
@@ -101,7 +106,9 @@ ai_browser2/
 │       ├── 008_settled_by.sql          Qui a settlé le verdict : 'polling' | 'webhook'.
 │       ├── 009_multitenant_tables.sql  developers/apps/api_keys + vue api_key_context.
 │       ├── 010_transactions_tenant_columns.sql  transactions.app_id/api_key_id/end_user_ref.
-│       └── 011_webhook_deliveries.sql  Journal d'envoi webhook (idempotence (tx,event)).
+│       ├── 011_webhook_deliveries.sql  Journal d'envoi webhook (idempotence (tx,event)).
+│       ├── 012_developers_auth.sql  developers.password_hash / email_verified (compte dev).
+│       └── 013_refresh_tokens.sql  Sessions dev : refresh tokens hashés (rotation/logout).
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── scripts/dump_openapi.py       Dump du schéma OpenAPI.

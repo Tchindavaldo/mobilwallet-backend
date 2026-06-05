@@ -6,6 +6,7 @@ Toutes les écritures/lectures passent par `db._run(fn)` (thread borné par time
 et dégradent en no-op si Supabase n'est pas configuré.
 """
 
+import hashlib
 import logging
 
 from core.db import db
@@ -16,6 +17,114 @@ log = logging.getLogger("ai_browser2")
 def _client():
     """Client Supabase vivant, ou None si la persistance est désactivée."""
     return db._client if db.enabled else None
+
+
+# --- Comptes developer (auth self-service) -----------------------------------
+
+def hash_refresh(token: str) -> str:
+    """Hash d'un refresh token (sha256 hex) — seul le hash est persisté."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+async def get_developer(developer_id: int) -> dict | None:
+    client = _client()
+    if client is None or developer_id is None:
+        return None
+
+    def _select():
+        res = (client.table("developers")
+               .select("id, email, name, is_active")
+               .eq("id", developer_id).limit(1).execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_select)
+
+
+async def get_developer_by_email(email: str) -> dict | None:
+    client = _client()
+    if client is None or not email:
+        return None
+
+    def _select():
+        res = (client.table("developers")
+               .select("id, email, name, is_active, password_hash")
+               .eq("email", email).limit(1).execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_select)
+
+
+async def create_developer_with_password(email: str, name: str | None,
+                                         password_hash: str) -> dict | None:
+    client = _client()
+    if client is None:
+        return None
+
+    def _insert():
+        res = (client.table("developers")
+               .insert({"email": email, "name": name, "password_hash": password_hash})
+               .execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_insert)
+
+
+# --- Refresh tokens (sessions) ------------------------------------------------
+
+async def store_refresh(developer_id: int, token_hash: str, expires_at_iso: str) -> None:
+    client = _client()
+    if client is None:
+        return
+
+    def _insert():
+        (client.table("refresh_tokens").insert({
+            "developer_id": developer_id, "token_hash": token_hash,
+            "expires_at": expires_at_iso,
+        }).execute())
+
+    await db._run(_insert)
+
+
+async def get_refresh(token_hash: str) -> dict | None:
+    """Refresh token actif (non révoqué) par son hash, ou None."""
+    client = _client()
+    if client is None or not token_hash:
+        return None
+
+    def _select():
+        res = (client.table("refresh_tokens")
+               .select("id, developer_id, expires_at, revoked_at")
+               .eq("token_hash", token_hash).is_("revoked_at", "null").limit(1).execute())
+        return res.data[0] if res.data else None
+
+    return await db._run(_select)
+
+
+async def revoke_refresh(token_hash: str) -> None:
+    client = _client()
+    if client is None or not token_hash:
+        return
+
+    def _update():
+        (client.table("refresh_tokens").update({"revoked_at": "now()"})
+         .eq("token_hash", token_hash).execute())
+
+    await db._run(_update)
+
+
+# --- Ownership (le dev n'agit que sur SES apps) -------------------------------
+
+async def app_belongs_to(app_id: int, developer_id: int) -> bool:
+    client = _client()
+    if client is None:
+        return False
+
+    def _select():
+        res = (client.table("apps").select("id")
+               .eq("id", app_id).eq("developer_id", developer_id).limit(1).execute())
+        return bool(res.data)
+
+    return bool(await db._run(_select))
 
 
 # --- Résolution d'une clé (lecture, chemin chaud) -----------------------------
