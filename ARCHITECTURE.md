@@ -46,8 +46,10 @@ ai_browser2/
 │   ├── tenants.py                Persistance multi-tenant (developers/apps/api_keys) : résolution
 │   │                             de clé (vue api_key_context), CRUD admin, isolation par app,
 │   │                             webhook_deliveries (réservation idempotente du verdict).
-│   ├── notifications.py          Webhook sortant signé (HMAC) du verdict vers le callback_url de
-│   │                             l'app : non bloquant (tâche de fond), idempotent, retries.
+│   ├── notifications.py          Verdict -> client : webhook sortant signé (HMAC) vers le
+│   │                             callback_url + push Socket.IO. Non bloquant, idempotent, retries.
+│   ├── realtime.py               Serveur Socket.IO (monté en ASGI sur FastAPI) : auth de la
+│   │                             connexion par clé API, rooms app:<id>/dev:<id>, émission verdict.
 │   ├── base.py                   Contrat `Aggregator` (ABC) + dataclasses PaymentRequest /
 │   │                             PaymentResult (porte error_code, curl_template, errors…) / CurlTemplate.
 │   ├── registry.py               Registre nom -> instance d'agrégateur (register / get / names).

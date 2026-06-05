@@ -67,16 +67,26 @@ async def _deliver(tx_id: int, status: str, data: dict) -> None:
     event = f"transaction.{status}"
 
     app = await tenants.get_app_for_transaction(tx_id)
-    if not app or not app.get("callback_url"):
-        return  # pas d'app ou pas de callback configuré -> rien à notifier
+    if not app:
+        return  # pas d'app rattachée -> rien à notifier
 
-    # Réservation idempotente : si un autre chemin a déjà réservé, on s'abstient.
+    # Réservation idempotente : si un autre chemin a déjà réservé, on s'abstient
+    # (pour le webhook ET le push temps réel : un seul des deux chemins émet).
     if not await tenants.reserve_delivery(tx_id, app.get("app_id"), event):
         return
 
     data["app_id"] = app.get("app_id")
     ts = int(time.time())
     payload = {"id": f"evt_{tx_id}_{status}", "type": event, "created": ts, "data": data}
+
+    # Push temps réel (Socket.IO) — best-effort, n'empêche pas le webhook HTTP.
+    from core import realtime
+    await realtime.emit_transaction_update(app.get("app_id"), payload)
+
+    # Pas de callback_url configuré -> pas de webhook HTTP, mais le push a eu lieu.
+    if not app.get("callback_url"):
+        await tenants.mark_delivery(tx_id, event, delivered=True, attempts=0)
+        return
     body = json.dumps(payload, ensure_ascii=False)
     signature = _sign(app.get("webhook_secret") or "", ts, body)
     headers = {

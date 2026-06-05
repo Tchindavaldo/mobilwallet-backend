@@ -7,12 +7,12 @@ import uvicorn
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "7332"))
     host = os.environ.get("HOST", "0.0.0.0")
-    # RELOAD=1 enables dev hot-reload (restarts on .py changes). Reload mode
-    # requires the app as an import string, not the object.
+    # On sert l'app ASGI combinée (FastAPI + Socket.IO) exposée comme
+    # `core.server:asgi`. RELOAD=1 active le hot-reload (string d'import requise).
     reload = os.environ.get("RELOAD", "0") == "1"
     if reload:
-        uvicorn.run("core.server:app", host=host, port=port, log_level="info", reload=True)
+        uvicorn.run("core.server:asgi", host=host, port=port, log_level="info", reload=True)
     else:
-        from core.server import app
+        from core.server import asgi
 
-        uvicorn.run(app, host=host, port=port, log_level="info")
+        uvicorn.run(asgi, host=host, port=port, log_level="info")

@@ -21,10 +21,14 @@ le curl replay est **propre à chaque agrégateur**.
 ai_browser2/
 ├── main.py                     # lanceur : importe core.server:app, lance uvicorn
 ├── core/                       # MOTEUR GÉNÉRIQUE (partagé)
-│   ├── server.py               #   assemblage FastAPI : lifespan + montage des routers
+│   ├── server.py               #   assemblage FastAPI + montage Socket.IO (export `asgi`)
 │   ├── runtime.py              #   état partagé (browser/llm) + helpers transverses
-│   ├── routers/                #   un APIRouter par domaine (system, payments, …)
+│   ├── routers/                #   un APIRouter par domaine (system, payments, admin, …)
 │   ├── schemas/                #   modèles Pydantic par domaine
+│   ├── auth.py                 #   auth multi-tenant (clés API, AuthContext, dépendances)
+│   ├── tenants.py              #   persistance multi-tenant + isolation + webhook_deliveries
+│   ├── notifications.py        #   verdict -> client : webhook signé + push Socket.IO
+│   ├── realtime.py             #   serveur Socket.IO (rooms par app, auth par clé)
 │   ├── base.py                 #   interface Aggregator (ABC) + dataclasses
 │   ├── registry.py             #   registre nom -> classe d'agrégateur
 │   ├── config.py               #   settings centralisés (.env)

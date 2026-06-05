@@ -128,3 +128,9 @@ def _custom_openapi():
 
 
 app.openapi = _custom_openapi
+
+# Monte Socket.IO par-dessus FastAPI. `asgi` est le point d'entrée à servir
+# (uvicorn core.server:asgi) ; `app` reste l'app FastAPI pure (routes/openapi).
+from core import realtime  # noqa: E402 — après la création de `app`
+
+asgi = realtime.mount(app)

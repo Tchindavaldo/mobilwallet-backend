@@ -9,14 +9,13 @@ primary_region = 'ams'
 [http_service]
   internal_port = 7332          # l'app uvicorn écoute sur 7332 (cf. PORT)
   force_https = true
-  # Auto-stop activé : la machine s'éteint quand inactive et se réveille à la
-  # 1re requête HTTP entrante (auto_start). min_machines_running=0 -> aucune
-  # machine forcée UP. ⚠️ Un polling /pay en cours (sans trafic entrant) ou un
-  # webhook arrivant machine éteinte peut être manqué/tué ; repasser
-  # min_machines_running=1 si le webhook/polling doit rester garanti.
+  # Machine TOUJOURS UP (min_machines_running=1) : les connexions Socket.IO sont
+  # persistantes (incompatibles avec un auto-stop), et le webhook DigiKUNTZ + le
+  # polling /pay doivent rester joignables/vivants. auto_stop_machines reste true
+  # pour arrêter UNIQUEMENT les machines en surplus si on scale > 1.
   auto_stop_machines = true
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
   processes = ['app']
 
 [[vm]]
