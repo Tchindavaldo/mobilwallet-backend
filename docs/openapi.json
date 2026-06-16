@@ -1480,18 +1480,6 @@
             "examples": [
               "Acme Checkout"
             ]
-          },
-          "callback_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Callback Url",
-            "description": "URL webhook serveur-à-serveur pour recevoir le verdict des paiements."
           }
         },
         "type": "object",
@@ -1510,18 +1498,6 @@
             "examples": [
               "Acme Checkout"
             ]
-          },
-          "callback_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Callback Url",
-            "description": "URL webhook serveur-à-serveur pour recevoir le verdict des paiements."
           }
         },
         "type": "object",
@@ -1739,10 +1715,10 @@
             "default": ""
           },
           "code": {
-            "type": "string",
+            "type": "integer",
             "title": "Code",
-            "description": "Code machine en cas d'erreur (ex. network_unavailable, operator_unavailable). Vide si OK.",
-            "default": ""
+            "description": "Code HTTP de la réponse (200 si OK).",
+            "default": 200
           }
         },
         "type": "object",

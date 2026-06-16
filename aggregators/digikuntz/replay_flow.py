@@ -18,6 +18,9 @@ import time
 import uuid
 
 import httpx
+import logging
+
+log = logging.getLogger("ai_browser2")
 
 # ---------------------------------------------------------------------------
 # Flutterwave response → message clair
@@ -67,6 +70,25 @@ def network_label(network: str) -> str:
     return network or "ce réseau"
 
 
+def ussd_code(network: str) -> str:
+    """Code USSD à composer pour valider, selon le réseau (Cameroun)."""
+    n = (network or "").lower()
+    if "orange" in n:
+        return "#150*50#"
+    if "mtn" in n:
+        return "*126#"
+    return ""
+
+
+def ussd_message(network: str) -> str:
+    """Message client clair invitant à composer le code USSD du réseau."""
+    code = ussd_code(network)
+    if code:
+        return (f"Composez {code} sur votre téléphone pour valider la transaction "
+                f"{network_label(network)}.")
+    return "Composez le code USSD reçu sur votre téléphone pour valider la transaction."
+
+
 def interpret_charge(resp: dict, network: str) -> tuple[str, str] | None:
     """Interpret a /charge or ping_url response.
 
@@ -76,11 +98,22 @@ def interpret_charge(resp: dict, network: str) -> tuple[str, str] | None:
     # Top-level error
     if resp.get("status") == "error":
         data = resp.get("data", {})
+        log.warning("[REPLAY][interpret_charge] status=error -> réponse Flutterwave brute: %s",
+                    json.dumps(resp)[:1500])
+        # Erreur TECHNIQUE LOCALE (pas une réponse Flutterwave) : chiffrement
+        # impossible, clé absente, etc. On NE la déguise PAS en panne opérateur.
+        # Elle se reconnaît à l'absence de structure Flutterwave (pas de data
+        # dict porteur de code/err_tx) et/ou à un code local connu.
+        local_code = resp.get("code", "")
+        if local_code == "replay_key_missing" or not isinstance(data, dict) or not data:
+            return "error", resp.get("message", "Erreur technique lors du replay.")
         if isinstance(data, dict):
             code = data.get("code", "")
             err_tx = data.get("err_tx", {})
             rc = err_tx.get("chargeResponseCode", "") if isinstance(err_tx, dict) else ""
             flw_msg = resp.get("message", "")
+            log.warning("[REPLAY][interpret_charge] code=%r chargeResponseCode=%r message=%r",
+                        code, rc, flw_msg)
             low = f"{code} {rc} {flw_msg}".lower()
             # Solde insuffisant (code 51) = problème de compte, PAS réseau.
             if rc == "51" or "insufficient" in low or "solde insuffisant" in low:
@@ -268,23 +301,29 @@ def encrypt_payload(plaintext: str, public_key_b64: str) -> str:
 async def step1_create_transaction(
     amount: int, phone: str, email: str, name: str
 ) -> dict:
-    """Create a digikuntz transaction, return {txRef, paymentLink, amount}."""
+    """Create a digikuntz transaction, return {txRef, paymentLink, amount}.
+
+    `callbackUrl` est transmis à DigiKUNTZ UNIQUEMENT si l'env
+    `DIGIKUNTZ_USE_CALLBACK` est activé (on envoie alors `DIGIKUNTZ_CALLBACK_URL`).
+    On n'utilise JAMAIS un callback_url reçu dans la requête /pay.
+    """
     print(f"[1] Creating digikuntz transaction: {amount} XAF, {phone}")
+    body = {
+        "estimation": amount,
+        "raisonForTransfer": "Rauvalia replay",
+        "userEmail": email,
+        "userPhone": phone,
+        "userCountry": "CM",
+        "senderName": name,
+    }
+    if _dk.use_callback and _dk.callback_url:
+        body["callbackUrl"] = _dk.callback_url
+    log.info("[REPLAY][step1] use_callback=%s callbackUrl transmis=%s",
+             _dk.use_callback, "callbackUrl" in body)
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             f"{DIGIKUNTZ_BASE}/transaction",
-            json={
-                "estimation": amount,
-                "raisonForTransfer": "Rauvalia replay",
-                "userEmail": email,
-                "userPhone": phone,
-                "userCountry": "CM",
-                "senderName": name,
-                # URL de webhook réelle (env DIGIKUNTZ_CALLBACK_URL) pour que
-                # DigiKUNTZ nous notifie le statut. NE PAS coder en dur : sinon
-                # le webhook part sur une URL bidon et n'arrive jamais.
-                "callbackUrl": _dk.callback_url,
-            },
+            json=body,
             headers={
                 "x-user-id": DIGIKUNTZ_USER_ID,
                 "x-secret-key": DIGIKUNTZ_SECRET,
@@ -349,8 +388,27 @@ async def step3_charge(
     import subprocess
 
     print(f"[3] Sending charge: {amount} XAF, {network}, {phone}")
+    log.info("[REPLAY][step3] charge_url=%s", cfg.charge_url)
+    log.info("[REPLAY][step3] PBFPubKey(flw_pub_key)=%r", cfg.pub_key)
+    log.info("[REPLAY][step3] public_key_rsa(len=%d)=%r...",
+             len(public_key_rsa or ""), (public_key_rsa or "")[:60])
 
     modalauditid = uuid.uuid4().hex
+
+    # Garde-fou : sans clé RSA, le chiffrement cryptico est impossible. On
+    # n'appelle PAS Node avec une clé vide (il renvoie son message d'usage,
+    # ensuite déguisé à tort en "panne opérateur"). On signale une erreur
+    # technique claire et distincte : le template n'a pas de clé exploitable.
+    if not (public_key_rsa or "").strip():
+        log.warning("[REPLAY][step3] clé RSA absente -> replay impossible "
+                    "(template sans clé et réinitialisation échouée)")
+        return {"modalauditid": modalauditid, "charge_response": {
+            "status": "error",
+            "code": "replay_key_missing",
+            "message": ("Clé de chiffrement (RSA) absente : le template de replay "
+                        "ne contient pas de clé valide. Relancez un paiement en "
+                        "mode 'browser' pour redéduire un template complet."),
+        }}
     device_fp = hashlib.sha256(f"{email}{time.time()}".encode()).hexdigest()
 
     # Build the plaintext payload (exact same structure the browser sends)
@@ -421,6 +479,8 @@ async def step3_charge(
                 continue
             print(f"    charge status: {resp.status_code} (tentative {attempt})")
             print(f"    response: {json.dumps(result, indent=2)[:500]}")
+            log.info("[REPLAY][step3] HTTP %s tentative %d -> réponse brute: %s",
+                     resp.status_code, attempt, json.dumps(result)[:1500])
 
             # "demande longue" — poll ping_url until we get the real charge result.
             ping_url = (result.get("data") or {}).get("ping_url", "")
@@ -434,7 +494,7 @@ async def step3_charge(
                             ping_data = pr.json()
                         except Exception:
                             continue
-                        print(f"    ping {i+1}: {json.dumps(ping_data)[:200]}")
+                        print(f"    ping {i+1}: {json.dumps(ping_data)[:400]}")
                         inner = ping_data.get("data", {})
                         if isinstance(inner, dict):
                             resp_obj = inner.get("response_parsed")
@@ -450,6 +510,22 @@ async def step3_charge(
                                 if isinstance(nested, dict) and (nested.get("flw_reference") or nested.get("flwRef")):
                                     print(f"    Got real charge response from ping_url")
                                     result = resp_obj
+                                    break
+                                # Échec Flutterwave IMBRIQUÉ dans data.response :
+                                # le ping a un status 'success/completed' mais le
+                                # vrai résultat de charge est un code d'erreur
+                                # (FLW_ERR, etc.). On NE doit PAS continuer à
+                                # poller : on remonte cette erreur comme réponse de
+                                # charge pour qu'interpret_charge la traite.
+                                err_code = resp_obj.get("code", "")
+                                if err_code in FLW_CODES or err_code == "FLW_ERR":
+                                    print(f"    ping_url -> échec charge (code={err_code})")
+                                    log.warning("[REPLAY][step3b] ping_url échec charge: %s",
+                                                json.dumps(resp_obj)[:500])
+                                    # Forme reconnue par interpret_charge (status=error + data).
+                                    result = {"status": "error",
+                                              "message": resp_obj.get("message", ""),
+                                              "data": {"code": err_code}}
                                     break
                         if ping_data.get("status") == "error":
                             result = ping_data

@@ -38,7 +38,8 @@ def _sign(secret: str, ts: int, body: str) -> str:
 def notify_settled(tx_id: int, result_or_status, *, transaction_ref: str = "",
                    amount: int = 0, network: str = "", phone: str = "",
                    end_user_ref: str | None = None,
-                   provider_transaction_id: str = "") -> None:
+                   provider_transaction_id: str = "",
+                   callback_url: str = "") -> None:
     """Déclenche (fire-and-forget) la notification du verdict d'une transaction.
 
     `result_or_status` est soit un statut str, soit un objet portant .final_status
@@ -59,10 +60,10 @@ def notify_settled(tx_id: int, result_or_status, *, transaction_ref: str = "",
         "provider_transaction_id": provider_transaction_id
         or getattr(result_or_status, "provider_transaction_id", "") or "",
     }
-    asyncio.create_task(_deliver(tx_id, status, payload_data))
+    asyncio.create_task(_deliver(tx_id, status, payload_data, callback_url=callback_url))
 
 
-async def _deliver(tx_id: int, status: str, data: dict) -> None:
+async def _deliver(tx_id: int, status: str, data: dict, callback_url: str = "") -> None:
     """Corps de la tâche de fond : réserve (idempotence), signe, POST + retries."""
     event = f"transaction.{status}"
 
@@ -83,15 +84,19 @@ async def _deliver(tx_id: int, status: str, data: dict) -> None:
     from core import realtime
     await realtime.emit_transaction_update(app.get("app_id"), payload)
 
-    # Pas de callback_url configuré -> pas de webhook HTTP, mais le push a eu lieu.
-    if not app.get("callback_url"):
+    # Le webhook HTTP n'utilise QUE le callback_url fourni dans la requête /pay.
+    # Aucun fallback (ni sur app.callback_url, ni sur une URL par défaut) : si le
+    # client n'a pas demandé de webhook, aucun POST ne part. Le push Socket.IO,
+    # lui, a déjà eu lieu ci-dessus (best-effort, pour qui écoute).
+    webhook_url = callback_url or ""
+    if not webhook_url:
+        log.info("transaction.%s tx=%s : pas de webhook (aucun callback_url dans la requête)",
+                 status, tx_id)
         await tenants.mark_delivery(tx_id, event, delivered=True, attempts=0)
         return
     body = json.dumps(payload, ensure_ascii=False)
-    signature = _sign(app.get("webhook_secret") or "", ts, body)
     headers = {
         "Content-Type": "application/json",
-        "X-MobileWallet-Signature": f"t={ts},v1={signature}",
     }
 
     attempts = 0
@@ -102,7 +107,7 @@ async def _deliver(tx_id: int, status: str, data: dict) -> None:
                 await asyncio.sleep(delay)
             attempts += 1
             try:
-                resp = await client.post(app["callback_url"], content=body, headers=headers)
+                resp = await client.post(webhook_url, content=body, headers=headers)
                 if 200 <= resp.status_code < 300:
                     await tenants.mark_delivery(tx_id, event, delivered=True, attempts=attempts)
                     log.info("webhook livré tx=%s event=%s (try %d)", tx_id, event, attempts)

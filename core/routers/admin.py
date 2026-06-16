@@ -41,7 +41,7 @@ async def create_app(body: AppCreate):
     Le secret n'est pas renvoyé ; il sert côté serveur à la signature."""
     secret = auth.generate_secret()
     app = _require_db(await tenants.create_app(
-        body.developer_id, body.name, body.callback_url, secret))
+        body.developer_id, body.name, None, secret))
     return app
 
 

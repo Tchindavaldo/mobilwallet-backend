@@ -20,6 +20,102 @@ log = logging.getLogger("ai_browser2")
 router = APIRouter()
 
 
+async def _execute_payment_mock(
+    req: PayRequest,
+    app_id: int,
+    api_key_id: int | None,
+    debug: bool = False,
+) -> PayResponse | PayResponseDebug:
+    """Mode mock : simule un paiement sans appeler DigiKUNTZ.
+
+    Retourne ussd_sent immédiatement, puis déclenche une tâche de fond qui attend
+    et envoie le verdict final via Socket + webhook après délai (1-3s).
+    """
+    log.info("MOCK /pay reçu: amount=%s, phone=%s, network=%s, callback_url=%s, end_user_ref=%s",
+             req.amount, req.phone, req.network, req.callback_url or "(vide)", req.end_user_ref)
+
+    from core import mock_aggregator
+
+    payment = PaymentRequest(
+        amount=req.amount,
+        phone=req.phone,
+        network=req.network,
+        email=req.email,
+        sender_name=req.sender_name,
+        callback_url=req.callback_url,
+    )
+
+    await _guard_duplicate(req)
+
+    # Scenario aléatoire : 80% success, 20% cancel (pour tester les deux chemins)
+    scenario = "cancel" if __import__("random").random() < 0.2 else "success"
+
+    tx_id = await db.insert_pending(
+        "mock", "mock", payment,
+        app_id=app_id, api_key_id=api_key_id, end_user_ref=req.end_user_ref,
+    )
+
+    # Phase 1 : retour immédiat "USSD envoyé"
+    ussd_sent_result = PaymentResult(
+        final_status="ussd_sent",
+        transaction_id=f"mock_{tx_id}_{__import__('time').time_ns() // 1_000_000}",
+        provider_transaction_id=f"mock_{tx_id}",
+        success=False,
+    )
+    ussd_sent_result = _settle(ussd_sent_result, "mock")
+
+    # Déclenche la phase 2 en arrière-plan (sans bloquer)
+    __import__("asyncio").create_task(
+        _mock_finalize_after_delay(
+            tx_id, scenario, req,
+            app_id, api_key_id
+        )
+    )
+
+    return _render_response(ussd_sent_result, debug)
+
+
+async def _mock_finalize_after_delay(
+    tx_id: int,
+    scenario: str,
+    req: PayRequest,
+    app_id: int,
+    api_key_id: int | None,
+) -> None:
+    """Phase 2 du mock : attend puis envoie le verdict final via Socket + webhook."""
+    from core import mock_aggregator
+    import asyncio
+
+    payment = PaymentRequest(
+        amount=req.amount,
+        phone=req.phone,
+        network=req.network,
+        email=req.email,
+        sender_name=req.sender_name,
+        callback_url=req.callback_url,
+    )
+
+    # Attendre 1-3s
+    delay_s = __import__("random").randint(1, 3)
+    await asyncio.sleep(delay_s)
+
+    # Générer le verdict final
+    result = await mock_aggregator.mock_pay_via_browser(payment, tx_id, scenario)
+    result = _settle(result, "mock")
+
+    # Mettre à jour la BD avec le verdict final
+    await db.update_transaction(tx_id, result)
+
+    # Envoyer les notifications (Socket + webhook)
+    notify_settled(
+        tx_id, result, transaction_ref=result.transaction_id,
+        amount=req.amount, network=req.network, phone=req.phone,
+        end_user_ref=req.end_user_ref,
+        provider_transaction_id=result.provider_transaction_id,
+        callback_url=req.callback_url,
+    )
+
+
 async def _execute_payment(
     req: PayRequest,
     app_id: int,
@@ -34,6 +130,10 @@ async def _execute_payment(
       - api_key_id : ID de la clé API (None si appelé par admin)
       - debug : inclure le détail technique dans la réponse
     """
+    # Mode mock : court-circuite DigiKUNTZ
+    if settings.mock_payments:
+        return await _execute_payment_mock(req, app_id, api_key_id, debug)
+
     browser = runtime.get_browser()
     llm = runtime.get_llm()
     if not browser or not llm:
@@ -140,12 +240,27 @@ async def _execute_payment(
     finally:
         result = _settle(result, engine_used)
         await db.update_transaction(tx_id, result)
-        notify_settled(
-            tx_id, result, transaction_ref=result.transaction_id,
-            amount=req.amount, network=req.network, phone=req.phone,
-            end_user_ref=req.end_user_ref,
-            provider_transaction_id=result.provider_transaction_id,
-        )
+
+        # USSD envoyé : on REND LA MAIN tout de suite avec 'ussd_sent' et on
+        # finalise (poll verify -> verdict -> notify) EN TÂCHE DE FOND. Le client
+        # reçoit le verdict final via webhook + Socket.IO. (Aucune notif terminale
+        # n'est émise maintenant : 'ussd_sent' n'est pas un statut terminal.)
+        if result.poll_after_close:
+            import asyncio
+            asyncio.create_task(
+                _finalize_in_background(agg, payment, result, tx_id, req,
+                                        engine_used)
+            )
+        else:
+            # Verdict déjà terminal (succès/échec avant USSD, panne) : on notifie
+            # maintenant (no-op si non terminal).
+            notify_settled(
+                tx_id, result, transaction_ref=result.transaction_id,
+                amount=req.amount, network=req.network, phone=req.phone,
+                end_user_ref=req.end_user_ref,
+                provider_transaction_id=result.provider_transaction_id,
+                callback_url=req.callback_url,
+            )
 
     if result.error_code in UPSTREAM_CODES:
         log.warning("Upstream indisponible (tx_id=%s, code=%s): %s",
@@ -156,6 +271,34 @@ async def _execute_payment(
         )
 
     return _render_response(result, debug)
+
+
+async def _finalize_in_background(agg, payment, result, tx_id, req, engine_used):
+    """Phase 2 (hors requête /pay) : poll verify -> verdict -> persiste + notifie.
+
+    Lancée quand l'USSD a été envoyé. Le poll tourne sans navigateur ni session ;
+    le verdict final part ensuite au client via webhook (si callback_url fourni)
+    et Socket.IO.
+    """
+    try:
+        # Le replay et le navigateur ont chacun leur boucle poll (volontairement
+        # distinctes). On route selon ce que le spec porte.
+        spec = result.poll_after_close or {}
+        if "cfg" in spec:
+            await agg.finalize_after_close_replay(payment, result)
+        else:
+            await agg.finalize_after_close(payment, result)
+        result = _settle(result, engine_used)
+        await db.update_transaction(tx_id, result)
+        notify_settled(
+            tx_id, result, transaction_ref=result.transaction_id,
+            amount=req.amount, network=req.network, phone=req.phone,
+            end_user_ref=req.end_user_ref,
+            provider_transaction_id=result.provider_transaction_id,
+            callback_url=req.callback_url,
+        )
+    except Exception as e:  # noqa: BLE001
+        log.exception("finalize_in_background tx=%s a échoué: %s", tx_id, e)
 
 
 @router.post(
@@ -233,8 +376,8 @@ async def _guard_duplicate(req: PayRequest) -> None:
                 {
                     "error": "retry_too_soon",
                     "message": (
-                        f"Une transaction récente est en cours de validation sur le "
-                        f"numéro {req.phone}. Réessayez dans {runtime.fmt_duration(remaining)}."
+                        f"Une transaction récente sur le numéro {req.phone} n'a pas "
+                        f"abouti (annulée). Réessayez dans {runtime.fmt_duration(remaining)}."
                     ),
                     "aggregator": req.aggregator,
                     "phone": req.phone,
@@ -303,7 +446,7 @@ def _render_response(result: PaymentResult, debug: bool):
         status=client_status,
         message=result.final_message or result.error,
         transaction_id=result.transaction_id,
-        code=result.error_code or "",
+        code=200,  # 503 (panne amont) est levé via HTTPException avant ici.
     )
     if not debug:
         return client

@@ -10,6 +10,7 @@ from core.browser import BrowserController
 from core.llm_client import LlmClient
 from core import classifier
 from . import status_poll
+from . import replay_flow
 
 log = logging.getLogger("ai_browser2")
 
@@ -20,7 +21,6 @@ _dk = settings.digikuntz
 DIGIKUNTZ_BASE = _dk.base
 DIGIKUNTZ_USER_ID = _dk.user_id
 DIGIKUNTZ_SECRET = _dk.secret
-DEFAULT_CALLBACK = _dk.callback_url
 
 
 class DigikuntzAgent:
@@ -213,10 +213,10 @@ class DigikuntzAgent:
                 # Statut provisoire : le navigateur a bien envoyé l'USSD. Le
                 # verdict définitif viendra de finalize_after_close (après close).
                 result.final_status = "ussd_sent"
-                result.final_message = (
-                    "USSD envoyé au client. Validation en attente sur le téléphone."
-                )
+                result.final_message = replay_flow.ussd_message(req.network)
                 result.payment_status = result.final_status
+                # USSD bien envoyé = succès d'étape.
+                result.success = True
                 return
             log.warning("USSD détecté mais flw_ref introuvable — fallback conclusion IA")
 
@@ -354,18 +354,23 @@ class DigikuntzAgent:
 
     async def _create_transaction(self, req: PaymentRequest) -> dict:
         """POST to digiKUNTZ API to create a payment transaction."""
+        # callbackUrl transmis UNIQUEMENT si l'env DIGIKUNTZ_USE_CALLBACK est
+        # activé (on envoie DIGIKUNTZ_CALLBACK_URL). Jamais le callback_url de la
+        # requête /pay.
+        body = {
+            "estimation": req.amount,
+            "raisonForTransfer": "Rauvalia auto",
+            "userEmail": req.email,
+            "userPhone": req.phone.replace("+237", ""),
+            "userCountry": "CM",
+            "senderName": req.sender_name,
+        }
+        if _dk.use_callback and _dk.callback_url:
+            body["callbackUrl"] = _dk.callback_url
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 f"{DIGIKUNTZ_BASE}/transaction",
-                json={
-                    "estimation": req.amount,
-                    "raisonForTransfer": "Rauvalia auto",
-                    "userEmail": req.email,
-                    "userPhone": req.phone.replace("+237", ""),
-                    "userCountry": "CM",
-                    "senderName": req.sender_name,
-                    "callbackUrl": req.callback_url or DEFAULT_CALLBACK,
-                },
+                json=body,
                 headers={
                     "x-user-id": DIGIKUNTZ_USER_ID,
                     "x-secret-key": DIGIKUNTZ_SECRET,

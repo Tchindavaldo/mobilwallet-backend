@@ -37,7 +37,7 @@ async def create_app(body: AppCreateSelf, ctx: DevContext = Depends(require_dev)
     """Crée une app pour VOTRE compte. Génère son webhook_secret HMAC (non exposé)."""
     secret = auth.generate_secret()
     return _require_db(await tenants.create_app(
-        ctx.developer_id, body.name, body.callback_url, secret))
+        ctx.developer_id, body.name, None, secret))
 
 
 @router.get("/apps", summary="Lister vos apps")

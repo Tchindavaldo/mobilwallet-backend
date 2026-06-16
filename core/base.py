@@ -114,6 +114,10 @@ class CurlTemplate:
     payload_skeleton: dict = field(default_factory=dict)
     public_key_rsa: str = ""
     flw_pub_key: str = ""
+    # Identité en BD du template chargé (rempli par load_template ; NON persisté
+    # dans le jsonb `template`). Sert au replay pour marquer ce template
+    # working/failed selon le résultat. None si non issu de la BD.
+    db_id: int | None = field(default=None, compare=False)
 
 
 class Aggregator(ABC):

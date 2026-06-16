@@ -46,7 +46,7 @@ class PayResponse(BaseModel):
     status: str = Field("", description="successful | ussd_sent | failed | cancelled | pending.")
     message: str = Field("", description="Message clair pour l'utilisateur final.")
     transaction_id: str = Field("", description="Référence transaction de l'agrégateur.")
-    code: str = Field("", description="Code machine en cas d'erreur (ex. network_unavailable, operator_unavailable). Vide si OK.")
+    code: int = Field(200, description="Code HTTP de la réponse (200 si OK).")
 
 
 class PayResponseDebug(PayResponse):
