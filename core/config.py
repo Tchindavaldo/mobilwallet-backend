@@ -22,12 +22,23 @@ def _env(key: str, default: str = "") -> str:
     return os.environ.get(key, default)
 
 
+def _env_bool(key: str, default: bool = False) -> bool:
+    raw = os.environ.get(key)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 @dataclass
 class DigikuntzConfig:
     base: str = field(default_factory=lambda: _env("DIGIKUNTZ_BASE", "https://app.digikuntz.com/dev"))
     user_id: str = field(default_factory=lambda: _env("DIGIKUNTZ_USER_ID"))
     secret: str = field(default_factory=lambda: _env("DIGIKUNTZ_SECRET"))
     callback_url: str = field(default_factory=lambda: _env("DIGIKUNTZ_CALLBACK_URL", "https://app.digikuntz.com/callback"))
+    # Envoyer un callbackUrl à DigiKUNTZ ? Décidé UNIQUEMENT par l'env (jamais par
+    # le callback_url reçu dans la requête /pay). Si True -> on transmet
+    # `callback_url` ci-dessus ; si False -> on n'envoie pas le champ du tout.
+    use_callback: bool = field(default_factory=lambda: _env_bool("DIGIKUNTZ_USE_CALLBACK", False))
 
     # Flutterwave (used by the DigiKUNTZ replay flow). These act as DEFAULTS;
     # a DB template overrides them when present.
@@ -103,6 +114,10 @@ class Settings:
 
     # Per-aggregator config
     digikuntz: DigikuntzConfig = field(default_factory=DigikuntzConfig)
+
+    # Mock mode : simule les paiements au lieu d'appeler DigiKUNTZ (utile quand DigiKUNTZ est down)
+    # MOCK_PAYMENTS=true active le mode mock pour /pay
+    mock_payments: bool = field(default_factory=lambda: _env("MOCK_PAYMENTS", "0").lower() in ("1", "true", "yes"))
 
 
 # Single shared instance loaded once at import.

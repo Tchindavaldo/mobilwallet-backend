@@ -35,6 +35,7 @@ ai_browser2/
 │   ├── routers/                  UN APIRouter PAR DOMAINE (logique des endpoints) :
 │   │   ├── system.py             /health, /aggregators, /config/max-tabs.
 │   │   ├── payments.py           /pay (dispatch, garde anti-doublon, settle, vues client/debug).
+│   │   │                         Court-circuité par le mode mock (settings.mock_payments).
 │   │   ├── transactions.py       /transactions*, /status/{ref}, /cancel (scopés à l'app).
 │   │   ├── templates.py          /aggregators/{name}/template (consulter/poser le replay).
 │   │   ├── webhooks.py           /webhook/digikuntz (callback statut entrant).
@@ -58,8 +59,12 @@ ai_browser2/
 │   ├── base.py                   Contrat `Aggregator` (ABC) + dataclasses PaymentRequest /
 │   │                             PaymentResult (porte error_code, curl_template, errors…) / CurlTemplate.
 │   ├── registry.py               Registre nom -> instance d'agrégateur (register / get / names).
+│   ├── mock_aggregator.py        Mode mock (MOCK_PAYMENTS=true) : simule un paiement sans appeler
+│   │                             DigiKUNTZ (ussd_sent immédiat puis successful/cancelled après délai).
+│   │                             Socket.IO + webhook se déclenchent normalement. Utile si DigiKUNTZ down.
 │   ├── config.py                 settings centralisés depuis .env (DigiKUNTZ, FLW, LLM, Supabase,
-│   │                             retry_window_* par réseau, max_tabs_per_browser).
+│   │                             retry_window_* par réseau, max_tabs_per_browser, mock_payments,
+│   │                             digikuntz.use_callback).
 │   ├── db.py                     Couche Supabase async (no-op si non configuré) : transactions,
 │   │                             curl_templates, transaction_traces, transaction_errors, app_settings.
 │   ├── browser.py                BrowserSession (1 transaction = 1 contexte isolé : page, capture
@@ -108,7 +113,9 @@ ai_browser2/
 │       ├── 010_transactions_tenant_columns.sql  transactions.app_id/api_key_id/end_user_ref.
 │       ├── 011_webhook_deliveries.sql  Journal d'envoi webhook (idempotence (tx,event)).
 │       ├── 012_developers_auth.sql  developers.password_hash / email_verified (compte dev).
-│       └── 013_refresh_tokens.sql  Sessions dev : refresh tokens hashés (rotation/logout).
+│       ├── 013_refresh_tokens.sql  Sessions dev : refresh tokens hashés (rotation/logout).
+│       └── 014_curl_templates_status.sql  Fiabilité d'un template (untested/working/failed) :
+│                                          le replay réutilise le dernier 'working', jamais un 'failed'.
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── scripts/dump_openapi.py       Dump du schéma OpenAPI.

@@ -9,6 +9,13 @@ Lis **`ARCHITECTURE.md`** (à la racine) avant de travailler : il donne une visi
 360 du projet (carte des fichiers, rôle de chaque module, flux d'un paiement,
 statuts, concurrence). Ça évite de devoir parcourir tout l'arbre pour comprendre.
 
+**⚠️ INTERDIT : lancer un agent Explore pour "découvrir" le projet.** `ARCHITECTURE.md`
+a été rédigé précisément pour éviter cette perte de temps. Lis-le avec `Read` (lecture
+directe, 1 seul appel outil) — c'est suffisant. Ne lance un agent ou `grep`/`find`
+supplémentaire QUE si tu cherches quelque chose d'ultra-précis introuvable dans
+ARCHITECTURE.md (ex. une signature de fonction exacte). Pas pour "comprendre le projet"
+— ça, ARCHITECTURE.md le fait.
+
 **Tenir à jour :** dès qu'un travail modifie la structure (nouveau fichier,
 module, endpoint, table, flux) ou rend une description obsolète, **mets à jour
 `ARCHITECTURE.md` ET `README.md`** avant de clore — au même titre que le code.

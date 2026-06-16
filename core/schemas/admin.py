@@ -12,8 +12,6 @@ class DeveloperCreate(BaseModel):
 class AppCreate(BaseModel):
     developer_id: int = Field(..., description="Id du developer propriétaire.")
     name: str = Field(..., description="Nom de l'app.", examples=["Acme Checkout"])
-    callback_url: str | None = Field(
-        None, description="URL webhook serveur-à-serveur pour recevoir le verdict des paiements.")
 
 
 class ApiKeyCreate(BaseModel):

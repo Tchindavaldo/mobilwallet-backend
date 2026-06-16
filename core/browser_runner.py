@@ -48,15 +48,13 @@ async def run_browser_flow(
         # navigateur.
         await aggregator.browser.release_session(browser)
 
-    # Phase post-navigateur (tab déjà fermée) : si l'USSD a été demandé,
-    # decide_browser_outcome a posé result.poll_after_close ; on poll/webhook en
-    # HTTP pur jusqu'au verdict opérateur. Aucune session n'est tenue pendant ce
-    # temps (potentiellement plusieurs minutes) — le pool reste libre.
-    if result.poll_after_close:
-        await aggregator.finalize_after_close(req, result)
-
-    # success final dérivé du verdict réel (ussd_sent n'est plus terminal ici).
-    if not result.success:
+    # Phase post-navigateur (tab déjà fermée). Si l'USSD a été demandé,
+    # decide_browser_outcome a posé result.poll_after_close ET final_status=
+    # 'ussd_sent'. On NE poll PLUS ici : /pay rend la main tout de suite avec
+    # 'ussd_sent' et lance finalize_after_close (poll verify) en tâche de fond,
+    # qui notifiera le verdict via webhook + Socket.IO. Le pool reste libre.
+    # (Cas sans USSD : verdict déjà terminal, rien à finaliser.)
+    if not result.poll_after_close and not result.success:
         result.success = result.final_status in ("successful", "completed")
     return result
 
@@ -207,13 +205,21 @@ async def _run_browser_flow_in_session(
     # Build the reusable curl template now, while we still hold the session's
     # captured requests (the session is released as soon as the flow returns).
     # /pay persists it from result.curl_template.
-    if charge_req:
+    if charge_req and (result.public_key or "").strip():
+        log.info("[BROWSER] clé RSA capturée (figée dans template) len=%d: %r...",
+                 len(result.public_key or ""), (result.public_key or "")[:60])
         try:
             result.curl_template = aggregator.extract_curl_template(
                 charge_req, verify_reqs[-1] if verify_reqs else None, result.public_key
             )
         except Exception as e:  # noqa: BLE001
             log.warning("extract_curl_template failed: %s", e)
+    elif charge_req:
+        # Charge capturée mais clé RSA absente (hook crypto non déclenché, run
+        # interrompu avant soumission…). Un template sans clé rendrait le replay
+        # inutilisable ET écraserait un bon template existant : on s'abstient.
+        log.warning("[BROWSER] template NON construit : clé RSA absente "
+                    "(charge capturée mais publicKey vide).")
 
     captured = browser.stop_capture()
     result.captured_requests = [

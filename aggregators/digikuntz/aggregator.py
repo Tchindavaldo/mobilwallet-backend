@@ -108,6 +108,20 @@ class DigikuntzAggregator(Aggregator):
     async def pay_via_browser(self, req: PaymentRequest, tx_id: int | None = None) -> PaymentResult:
         return await run_browser_flow(self, req, tx_id=tx_id)
 
+    async def _mark_template(self, template: "CurlTemplate | None", status: str,
+                             reason: str = "") -> None:
+        """Marque en BD la fiabilité du template chargé (working/failed).
+
+        No-op si le template n'a pas d'id BD (ex. defaults sans persistance) ou
+        si la couche db est absente. Le 'reason' n'est que loggé (jamais exposé).
+        """
+        db_id = getattr(template, "db_id", None)
+        if not db_id or not self.db:
+            return
+        log.info("[REPLAY] template id=%s marqué '%s'%s",
+                 db_id, status, f" ({reason})" if reason else "")
+        await self.db.mark_template_status(db_id, status)
+
     # --- replay mode (no browser) ---
     async def replay(self, req: PaymentRequest, template: CurlTemplate) -> PaymentResult:
         """Reproduce the payment using replay_flow steps (no browser).
@@ -119,6 +133,15 @@ class DigikuntzAggregator(Aggregator):
         result = PaymentResult()
         # Per-call config from the template (URLs/headers/pubkey). Isolated.
         cfg = replay_flow.ReplayConfig.from_template(template)
+        log.info("[REPLAY] === début replay ===")
+        log.info("[REPLAY] template présent=%s charge_url=%r verify_url=%r init_url=%r",
+                 template is not None,
+                 getattr(template, "charge_url", ""),
+                 getattr(template, "verify_url", ""),
+                 getattr(template, "init_url", ""))
+        log.info("[REPLAY] template.public_key_rsa(len=%d) flw_pub_key=%r",
+                 len(getattr(template, "public_key_rsa", "") or ""),
+                 getattr(template, "flw_pub_key", ""))
         try:
             tx = await replay_flow.step1_create_transaction(
                 req.amount, req.phone, req.email, req.sender_name
@@ -138,10 +161,14 @@ class DigikuntzAggregator(Aggregator):
 
         # RSA public key: prefer the stored template, else (re)initialize.
         public_key_rsa = template.public_key_rsa if template else ""
+        log.info("[REPLAY] clé RSA depuis template=%s (len=%d)",
+                 bool(public_key_rsa), len(public_key_rsa or ""))
         if not public_key_rsa:
+            log.info("[REPLAY] pas de clé dans le template -> step2_initialize_checkout (fresh)")
             try:
                 checkout = await replay_flow.step2_initialize_checkout(payment_link, cfg=cfg)
                 public_key_rsa = checkout.get("public_key", "")
+                log.info("[REPLAY] clé RSA fraîche obtenue (len=%d)", len(public_key_rsa or ""))
             except Exception as e:  # noqa: BLE001
                 log.warning("replay step2 failed (%s), will rely on fallback key", e)
 
@@ -164,6 +191,28 @@ class DigikuntzAggregator(Aggregator):
             result.final_status, result.final_message = verdict
             result.success = result.final_status == "successful"
             result.payment_status = result.final_status
+            # Erreur TECHNIQUE due au template (clé absente/invalide, chiffrement
+            # KO) : ce template est inexploitable -> on le marque 'failed' pour
+            # ne plus le réutiliser. Le prochain replay prendra un autre template
+            # working/untested (ou exigera un run browser). Le détail reste en
+            # LOG (déjà tracé), pas exposé dans la réponse client.
+            if result.final_status == "error":
+                await self._mark_template(template, "failed",
+                                          reason=result.final_message)
+                # Détail technique -> LOG seulement. Réponse client : message
+                # neutre, sans exposer clé/chiffrement/template.
+                log.warning("[REPLAY] échec technique template (-> failed): %s",
+                            result.final_message)
+                result.final_message = (
+                    "Paiement momentanément indisponible. Réessayez."
+                )
+                result.error = ""
+            else:
+                # Verdict métier (failed/network_down/...) : le chiffrement a été
+                # accepté et la charge a bien été envoyée -> le template fonctionne
+                # mécaniquement. On le marque 'working' (l'échec vient de
+                # l'opérateur/compte, pas du template).
+                await self._mark_template(template, "working")
             return result
 
         # Extract flw_ref then poll verify. Le flw_ref peut être à plusieurs
@@ -182,17 +231,63 @@ class DigikuntzAggregator(Aggregator):
                     flw_ref = (nested.get("flw_reference")
                                or nested.get("flw_ref") or "")
         if not flw_ref:
-            result.error = "No flw_ref in charge response"
+            # Pas de flw_ref ni de verdict exploitable : on ne sait pas trancher
+            # (réseau opérateur réel vs template/charge anormal). Détail en LOG,
+            # message client neutre, statut 'error'. On ne marque PAS le template
+            # 'failed' (ambigu).
+            log.warning("[REPLAY] pas de flw_ref dans la réponse /charge: %s",
+                        str(charge_resp)[:500])
+            result.final_status = "error"
+            result.final_message = "Paiement momentanément indisponible. Réessayez."
+            result.payment_status = "error"
             return result
 
         # /charge a renvoyé un flw_ref => l'USSD vient d'être envoyé au client.
+        # Le template a donc mécaniquement fonctionné (chiffrement accepté,
+        # charge passée) : on le marque 'working' pour les prochains replays.
+        await self._mark_template(template, "working")
         # On horodate cet instant : la fenêtre opérateur (base du calcul
         # anti-doublon) court à partir de là.
         import time as _t
         result.ussd_sent_at = _t.time()
         log.info("USSD envoyé (replay, flw_ref=%s)", flw_ref)
 
-        verify = await replay_flow.step4_poll_verify(charge["modalauditid"], flw_ref, cfg=cfg)
+        # L'USSD est parti : on REND LA MAIN immédiatement avec un statut
+        # provisoire 'ussd_sent'. Le verdict réel (validation/refus) viendra de
+        # finalize_after_close (poll verify), exécuté en tâche de fond par /pay,
+        # qui notifiera le client via webhook + Socket.IO. On pose tout ce qu'il
+        # faut pour rejouer le poll hors de cette requête (verify_params + cfg).
+        result.poll_after_close = {
+            "verify_params": {
+                "modalauditid": charge["modalauditid"],
+                "flw_ref": flw_ref,
+                "pub_key": cfg.pub_key,
+            },
+            "cfg": cfg,
+            "template_db_id": getattr(template, "db_id", None),
+        }
+        result.final_status = "ussd_sent"
+        result.final_message = replay_flow.ussd_message(req.network)
+        result.payment_status = result.final_status
+        # USSD bien envoyé = succès d'étape (le client doit maintenant valider).
+        result.success = True
+        return result
+
+    async def finalize_after_close_replay(self, req, result) -> None:
+        """Verdict final du REPLAY après réponse précoce 'ussd_sent'.
+
+        Reprend la boucle poll verify propre au replay (step4_poll_verify) hors
+        de la requête /pay. Met à jour result en place (le caller settle + notifie).
+        """
+        spec = result.poll_after_close
+        if not spec:
+            return
+        vp = spec["verify_params"]
+        cfg = spec.get("cfg") or replay_flow.ReplayConfig.defaults()
+        log.info("[REPLAY] finalize (post-ussd) — polling verify (flw_ref=%s)",
+                 vp["flw_ref"])
+        verify = await replay_flow.step4_poll_verify(
+            vp["modalauditid"], vp["flw_ref"], cfg=cfg)
 
         # Le polling ne s'arrête que sur un verdict terminal (pas de timeout) :
         # interpret_verify le traduit ici. Fallback unknown si réponse inattendue.
@@ -212,8 +307,9 @@ class DigikuntzAggregator(Aggregator):
         # Validation USSD par le client (verify -> successful) : on horodate
         # l'instant pour la garde anti-doublon après paiement réussi.
         if result.final_status == "successful":
+            import time as _t
             result.validated_at = _t.time()
-        return result
+        log.info("[REPLAY] verdict final (post-ussd): %s", result.final_status)
 
 
 register(DigikuntzAggregator.name, DigikuntzAggregator)

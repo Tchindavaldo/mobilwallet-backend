@@ -75,7 +75,9 @@ cp .env.example .env                 # puis remplir les valeurs
 > modifié `.env` (ex: ajout Supabase), il faut **couper et relancer** le serveur.
 
 Variables d'environnement (cf. `.env.example`) : `DIGIKUNTZ_*`, `FLW_*`, `DEEPSEEK_API_KEY`,
-`SUPABASE_URL`/`SUPABASE_KEY`, `HEADLESS` (1 en prod), `PORT`, `HOST`.
+`SUPABASE_URL`/`SUPABASE_KEY`, `HEADLESS` (1 en prod), `PORT`, `HOST`,
+`DIGIKUNTZ_USE_CALLBACK` (transmettre un `callbackUrl` à DigiKUNTZ, défaut `false`),
+`MOCK_PAYMENTS` (mode mock, cf. plus bas).
 
 > Sans Supabase configuré, l'API fonctionne quand même : la persistance devient un no-op
 > (pas d'historique ni de template stocké).
@@ -135,6 +137,11 @@ FastAPI génère automatiquement la doc OpenAPI :
 - `browser` — flux IA complet ; **déduit et persiste** le template curl.
 - `replay` — rejoue via le template stocké. **409** si aucun template (lancer `browser` d'abord).
 
+> **Mode mock** (`MOCK_PAYMENTS=true`) — `/pay` simule un paiement sans appeler DigiKUNTZ :
+> réponse `ussd_sent` immédiate, puis verdict final (`successful`/`cancelled`) après un court
+> délai, poussé normalement via **Socket.IO + webhook**. Utile pour développer/tester quand
+> DigiKUNTZ est indisponible. Implémenté dans `core/mock_aggregator.py`.
+
 **Codes d'erreur :** `404` agrégateur inconnu · `400` mode invalide · `422` réseau non
 supporté (renvoie la liste exacte attendue) · `409` replay sans template · `502` replay
 échoué et fallback désactivé.
@@ -170,6 +177,8 @@ Créer les tables via `schema/supabase.sql` puis renseigner `SUPABASE_URL`/`SUPA
   Le mode browser **ajoute** une nouvelle version **uniquement si la recette a changé**
   (sinon rien) ; la précédente est désactivée mais **conservée en historique**. Exactement
   une ligne `is_active=true` par agrégateur — c'est celle que le mode replay recharge.
+  Chaque template porte un `status` (`untested`/`working`/`failed`, migration `014`) : le replay
+  réutilise le dernier `working`, à défaut le dernier `untested`, et **jamais** un `failed`.
 
 Les appels Supabase (synchrones) sont exécutés via `asyncio.to_thread` pour ne pas bloquer
 la boucle asynchrone (ni le navigateur unique).
