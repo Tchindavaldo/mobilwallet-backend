@@ -37,7 +37,20 @@ L'architecture doit rester **propre, moderne, modulaire**. Règles non négociab
 - Toute nouvelle route/évolution s'ajoute **dans le module de son domaine**, pas
   dans un fichier déjà gros.
 
-## Convention de branches (OBLIGATOIRE)
+## Convention de branches Git (OBLIGATOIRE)
+
+> ⚠️ Cette section parle **exclusivement de branches Git** (`git checkout -b ...`).
+> Elle n'a rien à voir avec l'organisation des dossiers/modules dans le code.
+> Quand on dit "isoler un travail", on parle de **l'isoler sur sa propre branche Git**.
+
+**Règle d'or : tout travail de changement — moyen ou important — doit se faire sur
+une NOUVELLE branche Git créée AVANT de toucher au code.** Ne jamais coder
+directement sur `main`. Avant la moindre modification non triviale, créer la branche
+avec le bon préfixe, puis travailler dessus.
+
+Sont concernés (liste non exhaustive) : nouvelle fonctionnalité, refacto, ajout
+de route/module/service, modification d'un flux, correction de bug. Seules les
+retouches ultra-mineures (typo, commentaire, log) peuvent rester sur la branche courante.
 
 Toujours préfixer les branches selon leur nature :
 
@@ -50,6 +63,10 @@ Toujours préfixer les branches selon leur nature :
 Règle: **tout travail de debug commence sur une branche `debug/`**, créée depuis
 la branche de feature concernée (pas depuis `main`), pour hériter de son
 instrumentation. Ne jamais débuguer directement sur `main` ni sur une `feature/`.
+
+Règle: **tout travail de feature / changement moyen ou important commence sur une
+branche `feature/`**, créée depuis `main` (sauf indication contraire), AVANT de
+toucher au code. Une branche = un sujet ; ne pas mélanger plusieurs travaux dessus.
 
 **Procédure systématique (OBLIGATOIRE) dès qu'on me demande de résoudre un bug
 ou un problème :**

@@ -39,6 +39,21 @@ async def digikuntz_webhook(payload: dict):
         if row:
             await db.update_status_by_provider_id(provider_id, internal,
                                                   message=f"Webhook DigiKUNTZ: {raw}")
+            # Comptabilité (idempotente, via ledger) :
+            #   - un PAYIN réussi crédite le solde de l'app ;
+            #   - un PAYOUT échoué/annulé rembourse le débit réservé à l'initiation.
+            # (Un payout réussi ne fait rien : le débit reste.)
+            row_type = (row.get("type") or "payin").lower()
+            app_id = row.get("app_id")
+            if app_id and row.get("id"):
+                if row_type == "payin" and internal == "successful":
+                    await db.credit_app(app_id, row.get("amount", 0),
+                                        transaction_id=row["id"],
+                                        reason="payin_successful")
+                elif row_type == "payout" and internal in ("failed", "cancelled"):
+                    await db.credit_app(app_id, row.get("amount", 0),
+                                        transaction_id=row["id"],
+                                        reason="payout_refund")
             # Notifie l'app du verdict (idempotent : si le polling a déjà notifié
             # ce (tx, event), la réservation l'empêche d'envoyer en double).
             notify_settled(

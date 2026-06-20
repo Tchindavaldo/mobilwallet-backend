@@ -9,6 +9,11 @@ Tables (see schema/supabase.sql):
       transaction_ref, status, message, success, charge_response, error_signals,
       created_at)
   - curl_templates(id, aggregator, template jsonb, created_at, updated_at)
+  - app_ledger(id, app_id, direction, amount, transaction_id, reason, created_at)
+      + vue app_balance — comptabilité par app (cf. core/db_ledger.py).
+
+La comptabilité par app (soldes / payouts) vit dans le mixin LedgerMixin
+(core/db_ledger.py), hérité par Database, pour garder ce fichier sous la limite.
 """
 
 import asyncio
@@ -18,11 +23,12 @@ from typing import Any
 
 from core.base import CurlTemplate, PaymentRequest, PaymentResult
 from core.config import settings
+from core.db_ledger import LedgerMixin
 
 log = logging.getLogger("ai_browser2")
 
 
-class Database:
+class Database(LedgerMixin):
     def __init__(self) -> None:
         self._client = None
         if settings.supabase_url and settings.supabase_key:

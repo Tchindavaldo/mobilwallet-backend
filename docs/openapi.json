@@ -626,6 +626,67 @@
         }
       }
     },
+    "/payout": {
+      "post": {
+        "tags": [
+          "payout"
+        ],
+        "summary": "Effectuer un virement (payout)",
+        "description": "Effectue un virement sortant débité du solde de VOTRE app.\n\nLe solde de l'app = somme de ses encaissements réussis − ses retraits. Un\nvirement supérieur au solde disponible est refusé (422) avant tout appel amont.\nLe verdict final (`successful`/`failed`/`cancelled`) est poussé via webhook +\nSocket.IO ; consultable aussi par `GET /status/{transaction_id}`.",
+        "operationId": "payout_payout_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayoutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayoutResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agrégateur inconnu."
+          },
+          "400": {
+            "description": "Agrégateur sans support payout."
+          },
+          "409": {
+            "description": "Un virement est déjà en cours vers ce bénéficiaire."
+          },
+          "422": {
+            "description": "Solde de l'app insuffisant pour ce virement."
+          },
+          "502": {
+            "description": "Le virement n'a pas pu être initié."
+          },
+          "503": {
+            "description": "Service de paiement amont temporairement indisponible."
+          }
+        }
+      }
+    },
     "/transactions": {
       "get": {
         "tags": [
@@ -645,6 +706,47 @@
               "title": "Limit"
             }
           },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/balance": {
+      "get": {
+        "tags": [
+          "transactions"
+        ],
+        "summary": "Solde de votre app",
+        "description": "Solde logique de VOTRE app = somme de vos encaissements réussis − vos retraits.\n\nC'est le montant disponible pour un virement (`POST /payout`).",
+        "operationId": "app_balance_balance_get",
+        "parameters": [
           {
             "name": "authorization",
             "in": "header",
@@ -1317,6 +1419,511 @@
           }
         }
       }
+    },
+    "/admin/apps/{app_id}/payout": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Lancer un virement (payout) pour une app (sans clé API)",
+        "description": "Lance un virement pour l'app `app_id` sans clé API (débité de SON solde).",
+        "operationId": "admin_payout_admin_apps__app_id__payout_post",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPayoutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayoutResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Service de paiement amont temporairement indisponible."
+          },
+          "404": {
+            "description": "Agrégateur inconnu ou app introuvable."
+          },
+          "409": {
+            "description": "Un virement est déjà en cours vers ce bénéficiaire."
+          },
+          "422": {
+            "description": "Solde de l'app insuffisant."
+          },
+          "502": {
+            "description": "Le virement n'a pas pu être initié."
+          }
+        }
+      }
+    },
+    "/admin/apps/{app_id}/balance": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Solde courant d'une app",
+        "description": "Solde logique de l'app = somme des encaissements réussis − ses retraits.",
+        "operationId": "admin_app_balance_admin_apps__app_id__balance_get",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/apps/{app_id}/credit": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Créditer manuellement le solde d'une app",
+        "description": "Crédit MANUEL du solde d'une app (ajustement admin, sans payin rattaché).\n\n⚠️ Crée de l'argent qui n'existe pas forcément chez DigiKUNTZ : peut introduire\nun écart visible dans `/admin/reconciliation`. À réserver aux ajustements/tests.",
+        "operationId": "admin_app_credit_admin_apps__app_id__credit_post",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformCredit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/ledger/backfill": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Amorcer le ledger depuis l'historique des payins",
+        "description": "Crédite (idempotent) tous les payins 'successful' déjà en base qui n'ont pas\nencore de mouvement ledger. À lancer une fois pour initialiser les soldes.",
+        "operationId": "admin_ledger_backfill_admin_ledger_backfill_post",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/digikuntz/balance": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Solde du compte global DigiKUNTZ (trésorerie)",
+        "description": "Solde RÉEL du compte global DigiKUNTZ (tous users/apps confondus).\n\nDonnée de trésorerie sensible → admin uniquement. Un client ne voit que le\nsolde de son app (`GET /balance`). 503 si DigiKUNTZ injoignable.",
+        "operationId": "admin_global_balance_admin_digikuntz_balance_get",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/reconciliation": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Réconciliation Σ soldes apps + plateforme vs solde global DigiKUNTZ",
+        "description": "Contrôle l'invariant comptable : Σ soldes apps + solde plateforme doit égaler\nle solde réel du compte global DigiKUNTZ. Signale tout écart.",
+        "operationId": "admin_reconciliation_admin_reconciliation_get",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/platform/balance": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Solde plateforme (argent propre de MobileWallet)",
+        "description": "Solde plateforme = marge/frais/flottant de MobileWallet. Peut être négatif\n(payouts plateforme non encore rechargés).",
+        "operationId": "admin_platform_balance_admin_platform_balance_get",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/platform/credit": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Recharger le solde plateforme",
+        "description": "Ajoute des fonds au solde plateforme (recharge manuelle).",
+        "operationId": "admin_platform_credit_admin_platform_credit_post",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformCredit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/platform/payout": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Virement débité du solde PLATEFORME (pas d'une app)",
+        "description": "Virement sortant débité du solde PLATEFORME (argent propre de MobileWallet).\n\nPAS de contrôle de solde (le solde peut devenir négatif → recharger via\n`POST /admin/platform/credit`). Suivi identique : polling auto + webhook.",
+        "operationId": "admin_platform_payout_admin_platform_payout_post",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPayoutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayoutResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Service de paiement amont temporairement indisponible."
+          },
+          "400": {
+            "description": "Agrégateur sans support payout."
+          },
+          "409": {
+            "description": "Un virement est déjà en cours vers ce bénéficiaire."
+          },
+          "502": {
+            "description": "Le virement n'a pas pu être initié."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1410,6 +2017,87 @@
         ],
         "title": "AdminPayRequest",
         "description": "Requête de paiement lancée par un admin pour une app spécifique."
+      },
+      "AdminPayoutRequest": {
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "title": "Amount",
+            "description": "Montant à virer en XAF.",
+            "examples": [
+              5000
+            ]
+          },
+          "account_bank_code": {
+            "type": "string",
+            "title": "Account Bank Code",
+            "description": "Réseau du bénéficiaire — STRICT : exactement 'ORANGEMONEY' ou 'MTN'.",
+            "examples": [
+              "MTN"
+            ]
+          },
+          "account_number": {
+            "type": "string",
+            "title": "Account Number",
+            "description": "Numéro du compte bénéficiaire.",
+            "examples": [
+              "237691224472"
+            ]
+          },
+          "receiver_name": {
+            "type": "string",
+            "title": "Receiver Name",
+            "description": "Nom du bénéficiaire.",
+            "examples": [
+              "John Doe"
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "description": "Devise du virement.",
+            "default": "XAF"
+          },
+          "narration": {
+            "type": "string",
+            "title": "Narration",
+            "description": "Motif / libellé du virement.",
+            "default": ""
+          },
+          "aggregator": {
+            "type": "string",
+            "title": "Aggregator",
+            "description": "Nom de l'agrégateur.",
+            "default": "digikuntz"
+          },
+          "callback_url": {
+            "type": "string",
+            "title": "Callback Url",
+            "description": "URL de callback (défaut: celle de l'app).",
+            "default": ""
+          },
+          "end_user_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End User Ref",
+            "description": "Identifiant opaque de l'utilisateur final ; facultatif."
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount",
+          "account_bank_code",
+          "account_number",
+          "receiver_name"
+        ],
+        "title": "AdminPayoutRequest",
+        "description": "Requête de virement (payout) lancée par un admin pour une app spécifique."
       },
       "ApiKeyCreate": {
         "properties": {
@@ -1728,6 +2416,166 @@
         "title": "PayResponse",
         "description": "Vue CLIENT (dev qui intègre l'API) — strictement l'essentiel métier.\n\nTout le détail technique (charge_url, plaintext, curl, trace, tokens…) est\nréservé à l'admin (voir PayResponseDebug + ?debug=true). Ne JAMAIS ajouter de\nchamp interne ici."
       },
+      "PayoutRequest": {
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "title": "Amount",
+            "description": "Montant à virer en XAF.",
+            "examples": [
+              5000
+            ]
+          },
+          "account_bank_code": {
+            "type": "string",
+            "title": "Account Bank Code",
+            "description": "Réseau du bénéficiaire — STRICT, exactement 'ORANGEMONEY' ou 'MTN' (aucune variante/conversion ; 422 sinon).",
+            "examples": [
+              "MTN"
+            ]
+          },
+          "account_number": {
+            "type": "string",
+            "title": "Account Number",
+            "description": "Numéro du compte bénéficiaire.",
+            "examples": [
+              "237691224472"
+            ]
+          },
+          "receiver_name": {
+            "type": "string",
+            "title": "Receiver Name",
+            "description": "Nom du bénéficiaire.",
+            "examples": [
+              "John Doe"
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "description": "Devise du virement.",
+            "default": "XAF",
+            "examples": [
+              "XAF"
+            ]
+          },
+          "narration": {
+            "type": "string",
+            "title": "Narration",
+            "description": "Motif / libellé du virement.",
+            "default": "",
+            "examples": [
+              "Paiement fournisseur"
+            ]
+          },
+          "aggregator": {
+            "type": "string",
+            "title": "Aggregator",
+            "description": "Nom de l'agrégateur (cf. GET /aggregators).",
+            "default": "digikuntz"
+          },
+          "callback_url": {
+            "type": "string",
+            "title": "Callback Url",
+            "description": "URL de callback (défaut: celle de l'app).",
+            "default": ""
+          },
+          "end_user_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End User Ref",
+            "description": "Identifiant opaque de votre utilisateur final (ex. votre user_id). Stocké tel quel pour vos rapprochements ; facultatif."
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount",
+          "account_bank_code",
+          "account_number",
+          "receiver_name"
+        ],
+        "title": "PayoutRequest",
+        "examples": [
+          {
+            "account_bank_code": "MTN",
+            "account_number": "237691224472",
+            "aggregator": "digikuntz",
+            "amount": 5000,
+            "currency": "XAF",
+            "narration": "Paiement fournisseur",
+            "receiver_name": "John Doe"
+          }
+        ]
+      },
+      "PayoutResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Vrai si le virement a abouti."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "successful | pending | failed | cancelled.",
+            "default": ""
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Message clair pour l'utilisateur final.",
+            "default": ""
+          },
+          "transaction_id": {
+            "type": "string",
+            "title": "Transaction Id",
+            "description": "Référence transaction de l'agrégateur.",
+            "default": ""
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Code HTTP de la réponse (200 si OK).",
+            "default": 200
+          }
+        },
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "title": "PayoutResponse",
+        "description": "Vue CLIENT (dev qui intègre l'API) — l'essentiel métier.\n\nLe détail technique est réservé à l'admin (PayoutResponseDebug + ?debug=true)."
+      },
+      "PlatformCredit": {
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "title": "Amount",
+            "description": "Montant à ajouter au solde plateforme (XAF).",
+            "examples": [
+              100000
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "description": "Devise.",
+            "default": "XAF"
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "PlatformCredit",
+        "description": "Recharge du solde plateforme (argent propre de MobileWallet)."
+      },
       "RefreshRequest": {
         "properties": {
           "refresh_token": {
@@ -1877,6 +2725,10 @@
     {
       "name": "payments",
       "description": "Exécution des paiements via les agrégateurs."
+    },
+    {
+      "name": "payout",
+      "description": "Virements sortants (retraits) débités du solde de l'app."
     },
     {
       "name": "transactions",

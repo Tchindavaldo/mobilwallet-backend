@@ -24,11 +24,18 @@ log = logging.getLogger("ai_browser2")
 _dk = settings.digikuntz
 
 # Mapping statut provider -> statut interne (mêmes valeurs que le reste du code).
+# Couvre les DEUX familles : payin (collecte) et payout (retrait). Le même endpoint
+# GET /transaction renvoie le statut ; le webhook entrant et fetch_status partagent
+# donc ce mapping sans duplication.
 STATUS_MAP = {
     "payin_pending": "pending",
     "payin_success": "successful",
     "payin_error": "failed",
     "payin_closed": "cancelled",
+    "payout_pending": "pending",
+    "payout_success": "successful",
+    "payout_error": "failed",
+    "payout_closed": "cancelled",
 }
 
 _TERMINAL = {"successful", "failed", "cancelled"}
@@ -108,6 +115,29 @@ async def fetch_status(transaction_id: str) -> dict | None:
         "internal": STATUS_MAP.get(raw, raw or "unknown"),
         "raw": raw,
         "data": body.get("data"),
+    }
+
+
+async def fetch_global_balance() -> dict | None:
+    """Solde du compte GLOBAL DigiKUNTZ (GET {base}/balance).
+
+    C'est la trésorerie totale (tous les users/apps confondus) côté agrégateur :
+    l'autre membre de l'invariant `Σ soldes des apps == solde global`. Retourne
+    {balance, currency, lastUpdate} ou None en cas d'échec réseau/HTTP.
+    """
+    url = f"{_dk.base}/balance"
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(url, headers=_headers())
+            resp.raise_for_status()
+            body = resp.json()
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("fetch_global_balance: échec (%s)", type(e).__name__)
+        return None
+    return {
+        "balance": body.get("balance"),
+        "currency": body.get("currency", "XAF"),
+        "last_update": body.get("lastUpdate"),
     }
 
 

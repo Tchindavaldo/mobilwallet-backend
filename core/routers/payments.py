@@ -106,6 +106,9 @@ async def _mock_finalize_after_delay(
     # Mettre à jour la BD avec le verdict final
     await db.update_transaction(tx_id, result)
 
+    # Crédite le solde de l'app si succès (idempotent), puis notifie.
+    await _credit_on_success(app_id, tx_id, result, req.amount)
+
     # Envoyer les notifications (Socket + webhook)
     notify_settled(
         tx_id, result, transaction_ref=result.transaction_id,
@@ -114,6 +117,18 @@ async def _mock_finalize_after_delay(
         provider_transaction_id=result.provider_transaction_id,
         callback_url=req.callback_url,
     )
+
+
+async def _credit_on_success(app_id: int | None, tx_id: int | None,
+                             result: PaymentResult, amount: int) -> None:
+    """Crédite le solde de l'app si le payin a réussi. Idempotent (ledger).
+
+    MobileWallet tient le solde de chaque app (DigiKUNTZ n'a qu'un compte global) :
+    un encaissement réussi crédite l'app qui l'a déclenché. No-op si pas de succès,
+    pas d'app, ou pas de tx_id (le crédit doit être rattaché à une transaction)."""
+    if app_id and tx_id and result.final_status == "successful":
+        await db.credit_app(app_id, amount, transaction_id=tx_id,
+                            reason="payin_successful")
 
 
 async def _execute_payment(
@@ -249,11 +264,12 @@ async def _execute_payment(
             import asyncio
             asyncio.create_task(
                 _finalize_in_background(agg, payment, result, tx_id, req,
-                                        engine_used)
+                                        engine_used, app_id)
             )
         else:
-            # Verdict déjà terminal (succès/échec avant USSD, panne) : on notifie
-            # maintenant (no-op si non terminal).
+            # Verdict déjà terminal (succès/échec avant USSD, panne) : on crédite
+            # le solde si succès (idempotent), puis on notifie (no-op si non terminal).
+            await _credit_on_success(app_id, tx_id, result, req.amount)
             notify_settled(
                 tx_id, result, transaction_ref=result.transaction_id,
                 amount=req.amount, network=req.network, phone=req.phone,
@@ -273,7 +289,8 @@ async def _execute_payment(
     return _render_response(result, debug)
 
 
-async def _finalize_in_background(agg, payment, result, tx_id, req, engine_used):
+async def _finalize_in_background(agg, payment, result, tx_id, req, engine_used,
+                                  app_id=None):
     """Phase 2 (hors requête /pay) : poll verify -> verdict -> persiste + notifie.
 
     Lancée quand l'USSD a été envoyé. Le poll tourne sans navigateur ni session ;
@@ -290,6 +307,7 @@ async def _finalize_in_background(agg, payment, result, tx_id, req, engine_used)
             await agg.finalize_after_close(payment, result)
         result = _settle(result, engine_used)
         await db.update_transaction(tx_id, result)
+        await _credit_on_success(app_id, tx_id, result, req.amount)
         notify_settled(
             tx_id, result, transaction_ref=result.transaction_id,
             amount=req.amount, network=req.network, phone=req.phone,

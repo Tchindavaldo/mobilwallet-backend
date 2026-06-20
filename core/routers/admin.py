@@ -10,9 +10,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core import auth, tenants
 from core.auth import require_admin
-from core.schemas.admin import AdminPayRequest, ApiKeyCreate, ApiKeyCreated, AppCreate, DeveloperCreate
+from core.db import db
+from core.schemas.admin import (
+    AdminPayoutRequest, AdminPayRequest, ApiKeyCreate, ApiKeyCreated, AppCreate,
+    DeveloperCreate, PlatformCredit,
+)
 from core.schemas.payments import PayResponse
+from core.schemas.payout import PayoutRequest, PayoutResponse
 from core.routers.payments import _execute_payment
+from core.routers.payout import _execute_payout, execute_platform_payout
 
 router = APIRouter(
     prefix="/admin",
@@ -123,3 +129,149 @@ async def admin_pay(
         end_user_ref=body.end_user_ref,
     )
     return await _execute_payment(req, app_id=app_id, api_key_id=None, debug=debug)
+
+
+@router.post(
+    "/apps/{app_id}/payout",
+    response_model=PayoutResponse,
+    summary="Lancer un virement (payout) pour une app (sans clé API)",
+    responses={
+        404: {"description": "Agrégateur inconnu ou app introuvable."},
+        409: {"description": "Un virement est déjà en cours vers ce bénéficiaire."},
+        422: {"description": "Solde de l'app insuffisant."},
+        502: {"description": "Le virement n'a pas pu être initié."},
+        503: {"description": "Service de paiement amont temporairement indisponible."},
+    },
+)
+async def admin_payout(
+    app_id: int,
+    body: AdminPayoutRequest,
+    debug: bool = Query(False, include_in_schema=False),
+):
+    """Lance un virement pour l'app `app_id` sans clé API (débité de SON solde)."""
+    app = await tenants.get_app(app_id)
+    if app is None:
+        raise HTTPException(404, {"error": "app_not_found",
+                                  "message": f"Aucune app trouvée avec l'id {app_id}."})
+    req = PayoutRequest(
+        amount=body.amount,
+        account_bank_code=body.account_bank_code,
+        account_number=body.account_number,
+        receiver_name=body.receiver_name,
+        currency=body.currency,
+        narration=body.narration,
+        aggregator=body.aggregator,
+        callback_url=body.callback_url or app.get("callback_url") or "",
+        end_user_ref=body.end_user_ref,
+    )
+    return await _execute_payout(req, app_id=app_id, api_key_id=None, debug=debug)
+
+
+@router.get("/apps/{app_id}/balance", summary="Solde courant d'une app")
+async def admin_app_balance(app_id: int):
+    """Solde logique de l'app = somme des encaissements réussis − ses retraits."""
+    return {"app_id": app_id, "balance": await db.get_app_balance(app_id),
+            "currency": "XAF"}
+
+
+@router.post("/apps/{app_id}/credit", summary="Créditer manuellement le solde d'une app")
+async def admin_app_credit(app_id: int, body: PlatformCredit):
+    """Crédit MANUEL du solde d'une app (ajustement admin, sans payin rattaché).
+
+    ⚠️ Crée de l'argent qui n'existe pas forcément chez DigiKUNTZ : peut introduire
+    un écart visible dans `/admin/reconciliation`. À réserver aux ajustements/tests."""
+    app = await tenants.get_app(app_id)
+    if app is None:
+        raise HTTPException(404, {"error": "app_not_found",
+                                  "message": f"Aucune app trouvée avec l'id {app_id}."})
+    await db.credit_app_manual(app_id, body.amount, currency=body.currency,
+                               reason="manual_admin")
+    return {"app_id": app_id, "balance": await db.get_app_balance(app_id),
+            "currency": body.currency}
+
+
+@router.post("/ledger/backfill", summary="Amorcer le ledger depuis l'historique des payins")
+async def admin_ledger_backfill():
+    """Crédite (idempotent) tous les payins 'successful' déjà en base qui n'ont pas
+    encore de mouvement ledger. À lancer une fois pour initialiser les soldes."""
+    return {"credited": await db.backfill_ledger_from_transactions()}
+
+
+@router.get("/digikuntz/balance", summary="Solde du compte global DigiKUNTZ (trésorerie)")
+async def admin_global_balance():
+    """Solde RÉEL du compte global DigiKUNTZ (tous users/apps confondus).
+
+    Donnée de trésorerie sensible → admin uniquement. Un client ne voit que le
+    solde de son app (`GET /balance`). 503 si DigiKUNTZ injoignable."""
+    from aggregators.digikuntz import status_poll
+    bal = await status_poll.fetch_global_balance()
+    if bal is None:
+        raise HTTPException(503, {"error": "digikuntz_unavailable",
+                                  "message": "Impossible de récupérer le solde DigiKUNTZ."})
+    return bal
+
+
+@router.get("/reconciliation", summary="Réconciliation Σ soldes apps + plateforme vs solde global DigiKUNTZ")
+async def admin_reconciliation():
+    """Contrôle l'invariant comptable : Σ soldes apps + solde plateforme doit égaler
+    le solde réel du compte global DigiKUNTZ. Signale tout écart."""
+    from aggregators.digikuntz import status_poll
+    apps_total = await db.total_apps_balance()
+    platform = await db.get_platform_balance()
+    internal_total = apps_total + platform
+    glob = await status_poll.fetch_global_balance()
+    global_balance = glob.get("balance") if glob else None
+    diff = (global_balance - internal_total) if global_balance is not None else None
+    return {
+        "apps_total": apps_total,
+        "platform_balance": platform,
+        "internal_total": internal_total,
+        "digikuntz_global": global_balance,
+        "difference": diff,
+        "reconciled": diff == 0,
+        "currency": (glob or {}).get("currency", "XAF"),
+        "digikuntz_reachable": glob is not None,
+    }
+
+
+@router.get("/platform/balance", summary="Solde plateforme (argent propre de MobileWallet)")
+async def admin_platform_balance():
+    """Solde plateforme = marge/frais/flottant de MobileWallet. Peut être négatif
+    (payouts plateforme non encore rechargés)."""
+    return {"balance": await db.get_platform_balance(), "currency": "XAF"}
+
+
+@router.post("/platform/credit", summary="Recharger le solde plateforme")
+async def admin_platform_credit(body: PlatformCredit):
+    """Ajoute des fonds au solde plateforme (recharge manuelle)."""
+    await db.credit_platform(body.amount, reason="reload", currency=body.currency)
+    return {"balance": await db.get_platform_balance(), "currency": body.currency}
+
+
+@router.post(
+    "/platform/payout",
+    response_model=PayoutResponse,
+    summary="Virement débité du solde PLATEFORME (pas d'une app)",
+    responses={
+        400: {"description": "Agrégateur sans support payout."},
+        409: {"description": "Un virement est déjà en cours vers ce bénéficiaire."},
+        502: {"description": "Le virement n'a pas pu être initié."},
+        503: {"description": "Service de paiement amont temporairement indisponible."},
+    },
+)
+async def admin_platform_payout(
+    body: AdminPayoutRequest,
+    debug: bool = Query(False, include_in_schema=False),
+):
+    """Virement sortant débité du solde PLATEFORME (argent propre de MobileWallet).
+
+    PAS de contrôle de solde (le solde peut devenir négatif → recharger via
+    `POST /admin/platform/credit`). Suivi identique : polling auto + webhook."""
+    req = PayoutRequest(
+        amount=body.amount, account_bank_code=body.account_bank_code,
+        account_number=body.account_number, receiver_name=body.receiver_name,
+        currency=body.currency, narration=body.narration,
+        aggregator=body.aggregator, callback_url=body.callback_url,
+        end_user_ref=body.end_user_ref,
+    )
+    return await execute_platform_payout(req, debug=debug)

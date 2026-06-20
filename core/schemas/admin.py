@@ -48,3 +48,26 @@ class AdminPayRequest(BaseModel):
         description="Identifiant opaque de l'utilisateur final (ex. votre user_id). "
                     "Stocké tel quel pour vos rapprochements ; facultatif.",
     )
+
+
+class PlatformCredit(BaseModel):
+    """Recharge du solde plateforme (argent propre de MobileWallet)."""
+    amount: int = Field(..., description="Montant à ajouter au solde plateforme (XAF).",
+                        examples=[100000])
+    currency: str = Field("XAF", description="Devise.")
+
+
+class AdminPayoutRequest(BaseModel):
+    """Requête de virement (payout) lancée par un admin pour une app spécifique."""
+    amount: int = Field(..., description="Montant à virer en XAF.", examples=[5000])
+    account_bank_code: str = Field(..., description="Réseau du bénéficiaire — STRICT : "
+                                   "exactement 'ORANGEMONEY' ou 'MTN'.", examples=["MTN"])
+    account_number: str = Field(..., description="Numéro du compte bénéficiaire.",
+                                examples=["237691224472"])
+    receiver_name: str = Field(..., description="Nom du bénéficiaire.", examples=["John Doe"])
+    currency: str = Field("XAF", description="Devise du virement.")
+    narration: str = Field("", description="Motif / libellé du virement.")
+    aggregator: str = Field("digikuntz", description="Nom de l'agrégateur.")
+    callback_url: str = Field("", description="URL de callback (défaut: celle de l'app).")
+    end_user_ref: str | None = Field(
+        None, description="Identifiant opaque de l'utilisateur final ; facultatif.")

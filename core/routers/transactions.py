@@ -28,6 +28,14 @@ async def list_transactions(limit: int = 50, ctx: AuthContext = Depends(require_
     return {"transactions": await tenants.list_transactions_for_app(ctx.app_id, limit=limit)}
 
 
+@router.get("/balance", tags=["transactions"], summary="Solde de votre app")
+async def app_balance(ctx: AuthContext = Depends(require_api_key)):
+    """Solde logique de VOTRE app = somme de vos encaissements réussis − vos retraits.
+
+    C'est le montant disponible pour un virement (`POST /payout`)."""
+    return {"balance": await db.get_app_balance(ctx.app_id), "currency": "XAF"}
+
+
 @router.get(
     "/status/{transaction_ref}",
     tags=["transactions"],
