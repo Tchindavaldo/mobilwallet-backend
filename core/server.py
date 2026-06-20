@@ -25,7 +25,8 @@ from core.config import settings
 from core.db import db
 from core.llm_client import LlmClient, LlmConfig
 from core.routers import (
-    admin, auth, dev, payments, projects, system, templates, transactions, webhooks,
+    admin, auth, dev, payments, payout, projects, system, templates, transactions,
+    webhooks,
 )
 
 logging.basicConfig(
@@ -86,6 +87,7 @@ Toute tentative est auditée (table `transactions`) quand Supabase est configur�
 OPENAPI_TAGS = [
     {"name": "system", "description": "Santé et introspection du service."},
     {"name": "payments", "description": "Exécution des paiements via les agrégateurs."},
+    {"name": "payout", "description": "Virements sortants (retraits) débités du solde de l'app."},
     {"name": "transactions", "description": "Gestion des transactions exposée au client."},
     {"name": "admin", "description": "Audit/debug réservé à l'admin backend (non documenté pour le client)."},
     {"name": "dev", "description": "Outils de développement (pilotage libre, ping LLM)."},
@@ -105,6 +107,7 @@ app.include_router(webhooks.router)
 app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(payments.router)
+app.include_router(payout.router)
 app.include_router(transactions.router)
 app.include_router(templates.router)
 app.include_router(admin.router)

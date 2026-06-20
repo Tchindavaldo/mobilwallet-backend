@@ -102,7 +102,9 @@ FastAPI génère automatiquement la doc OpenAPI :
 |---|---|---|
 | GET | `/health` | statut + agrégateurs |
 | GET | `/aggregators` | modules disponibles + réseaux supportés |
-| POST | `/pay` | exécuter un paiement (aggregator + mode) |
+| POST | `/pay` | exécuter un paiement (encaissement) |
+| POST | `/payout` | effectuer un virement (retrait), débité du solde de l'app |
+| GET | `/balance` | solde courant de votre app (XAF) |
 | POST | `/transactions/{tx_id}/cancel` | débloquer une transaction `pending` |
 | GET/PUT | `/config/max-tabs` | seuil d'onglets par navigateur (concurrence) |
 
@@ -111,6 +113,24 @@ FastAPI génère automatiquement la doc OpenAPI :
 `GET /transactions/{ref}/errors`, `GET|POST /aggregators/{name}/template`,
 `POST /drive`, `POST /test-llm`. *(À terme : endpoint admin protégé par auth — cf.
 `todo/migrer-vue-admin-endpoint-dedie.md`.)*
+
+**Endpoints ADMIN comptabilité** (header `X-Admin-Key`) :
+
+| Méthode | Route | Rôle |
+|---|---|---|
+| POST | `/admin/apps/{id}/payout` | virement pour une app (débité de SON solde) |
+| GET | `/admin/apps/{id}/balance` | solde d'une app |
+| POST | `/admin/ledger/backfill` | amorcer les soldes depuis les payins réussis |
+| GET | `/admin/digikuntz/balance` | solde réel du compte global DigiKUNTZ |
+| GET | `/admin/reconciliation` | Σ soldes apps + plateforme vs solde global |
+| GET | `/admin/platform/balance` | solde plateforme (argent propre MobileWallet) |
+| POST | `/admin/platform/credit` | recharger le solde plateforme |
+| POST | `/admin/platform/payout` | virement débité de la plateforme (sans contrôle de solde) |
+
+> **Solde plateforme** : l'argent propre de MobileWallet (marge/frais/flottant),
+> distinct des apps clientes. L'admin le recharge (`/admin/platform/credit`) et
+> retire dessus (`/admin/platform/payout`) **sans contrôle de solde** (le solde peut
+> devenir négatif puis être rechargé). Inclus dans l'invariant et la réconciliation.
 
 > **Vue client vs admin** : `/pay` renvoie par défaut une **vue minimale**
 > (`success`, `status`, `message`, `transaction_id`, `code`). L'admin peut ajouter
@@ -161,6 +181,52 @@ Exemple :
 curl -X POST localhost:7332/pay -H 'content-type: application/json' -d '{
   "amount":25,"phone":"696080087","network":"Orangemoney",
   "email":"client@example.com","mode":"browser"
+}'
+```
+
+### `POST /payout` — virement sortant (retrait)
+
+**MobileWallet est lui-même un agrégateur** : côté DigiKUNTZ il n'existe qu'**un
+seul compte global** où atterrit l'argent de toutes les apps. C'est donc nous qui
+tenons le **solde de chaque app** (grand livre `app_ledger`) :
+
+> **solde d'une app** = somme de ses encaissements (`/pay`) réussis − ses retraits.
+
+Un retrait **débite le solde de VOTRE app** (identifiée par la clé API). Invariant :
+`Σ soldes des apps + solde plateforme == solde réel du compte global DigiKUNTZ` — une
+app ne peut jamais retirer plus qu'elle n'a encaissé. Un virement supérieur au solde est
+**refusé (422)** avant tout appel amont. Le solde est réservé (débité) à
+l'initiation et **remboursé** si le virement échoue.
+
+```jsonc
+{
+  "amount": 5000,
+  "account_bank_code": "MTN",          // réseau / banque du bénéficiaire
+  "account_number": "237691224472",
+  "receiver_name": "John Doe",
+  "currency": "XAF",
+  "narration": "Paiement fournisseur",
+  "aggregator": "digikuntz"
+}
+```
+
+Réponse immédiate `status: "pending"`, puis verdict final (`successful` / `failed`
+/ `cancelled`) poussé via **webhook + Socket.IO** et consultable par
+`GET /status/{transaction_id}`. `GET /balance` renvoie le solde courant.
+
+**Codes d'erreur :** `404` agrégateur inconnu · `400` agrégateur sans payout ·
+`409` un virement déjà en cours vers ce bénéficiaire · `422` solde insuffisant ·
+`502` virement non initié · `503` service amont indisponible.
+
+> **Mode mock** (`MOCK_PAYMENTS=true`) — `/payout` simule le virement sans appeler
+> DigiKUNTZ mais **applique la vraie comptabilité** (réserve/rembourse le solde),
+> verdict après un court délai via Socket.IO + webhook.
+
+```bash
+curl -X POST localhost:7332/payout \
+  -H 'authorization: Bearer sk_live_…' -H 'content-type: application/json' -d '{
+  "amount":5000,"account_bank_code":"MTN","account_number":"237691224472",
+  "receiver_name":"John Doe","currency":"XAF","narration":"Paiement fournisseur"
 }'
 ```
 

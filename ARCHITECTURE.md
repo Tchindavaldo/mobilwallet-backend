@@ -36,12 +36,18 @@ ai_browser2/
 │   │   ├── system.py             /health, /aggregators, /config/max-tabs.
 │   │   ├── payments.py           /pay (dispatch, garde anti-doublon, settle, vues client/debug).
 │   │   │                         Court-circuité par le mode mock (settings.mock_payments).
-│   │   ├── transactions.py       /transactions*, /status/{ref}, /cancel (scopés à l'app).
+│   │   │                         Crédite le solde de l'app (app_ledger) au succès payin.
+│   │   ├── payout.py             /payout (virement sortant) : garde anti-doublon par
+│   │   │                         bénéficiaire, RÉSERVE atomique du solde (db.reserve_payout),
+│   │   │                         initiate_payout, poll/webhook -> verdict, REMBOURSE si échec.
+│   │   ├── transactions.py       /transactions*, /status/{ref}, /cancel, /balance (scopés à l'app).
 │   │   ├── templates.py          /aggregators/{name}/template (consulter/poser le replay).
 │   │   ├── webhooks.py           /webhook/digikuntz (callback statut entrant).
 │   │   ├── auth.py               /signup,/login,/refresh,/logout : compte dev (self-service).
 │   │   ├── projects.py           /apps,/apps/{id}/keys : le dev gère SES apps/clés (require_dev).
-│   │   ├── admin.py              /admin/* : supervision developers/apps/clés + /admin/apps/{app_id}/pay (require_admin).
+│   │   ├── admin.py              /admin/* : supervision developers/apps/clés + /admin/apps/{app_id}/pay
+│   │   │                         + /admin/apps/{app_id}/payout + .../balance + /ledger/backfill
+│   │   │                         + /digikuntz/balance (solde global) + /reconciliation (require_admin).
 │   │   └── dev.py                /drive, /test-llm.
 │   ├── schemas/                  Modèles Pydantic par domaine (payments, system, templates, dev,
 │   │                             admin, auth, projects).
@@ -67,6 +73,10 @@ ai_browser2/
 │   │                             digikuntz.use_callback).
 │   ├── db.py                     Couche Supabase async (no-op si non configuré) : transactions,
 │   │                             curl_templates, transaction_traces, transaction_errors, app_settings.
+│   ├── db_ledger.py              LedgerMixin (hérité par Database) : comptabilité —
+│   │                             app_ledger (credit_app/get_app_balance/reserve_payout/backfill/total),
+│   │                             platform_ledger (credit_platform/debit_platform/get_platform_balance),
+│   │                             payouts (insert_pending_payout/last_payout_for_account/update_payout).
 │   ├── browser.py                BrowserSession (1 transaction = 1 contexte isolé : page, capture
 │   │                             réseau, frame active, snapshot, actions, wait_for_page_change) +
 │   │                             BrowserController (POOL : acquire/release_session, N sessions par
@@ -95,8 +105,11 @@ ai_browser2/
 │       ├── status_poll.py        Polling statut DigiKUNTZ (GET {base}/transaction?transactionId=) :
 │       │                         source de vérité du verdict après USSD. payin_* -> interne, poll
 │       │                         jusqu'à un verdict terminal (sans timeout : l'opérateur tranche toujours). 0 token.
-│       └── replay_flow.py        Mode curl replay : step1..step4 (create/init/charge/poll verify),
-│                                 ReplayConfig (config par appel, pas de globals mutés), interpret_*.
+│       ├── replay_flow.py        Mode curl replay : step1..step4 (create/init/charge/poll verify),
+│       │                         ReplayConfig (config par appel, pas de globals mutés), interpret_*.
+│       └── payout_flow.py        Payout (retrait) : initiate_payout (POST {base}/payout) +
+│                                 poll_payout_status (GET {base}/transaction, mapping payout_*,
+│                                 registre webhook⇄polling). Aucun navigateur/LLM/Flutterwave.
 │
 ├── schema/
 │   ├── supabase.sql              Schéma de base : transactions, curl_templates.
@@ -114,8 +127,14 @@ ai_browser2/
 │       ├── 011_webhook_deliveries.sql  Journal d'envoi webhook (idempotence (tx,event)).
 │       ├── 012_developers_auth.sql  developers.password_hash / email_verified (compte dev).
 │       ├── 013_refresh_tokens.sql  Sessions dev : refresh tokens hashés (rotation/logout).
-│       └── 014_curl_templates_status.sql  Fiabilité d'un template (untested/working/failed) :
-│                                          le replay réutilise le dernier 'working', jamais un 'failed'.
+│       ├── 014_curl_templates_status.sql  Fiabilité d'un template (untested/working/failed) :
+│       │                                  le replay réutilise le dernier 'working', jamais un 'failed'.
+│       ├── 015_app_ledger.sql      Grand livre par app (credit/debit) + vue app_balance.
+│       │                           Unique (transaction_id, direction) = idempotence du solde.
+│       ├── 016_reserve_payout.sql  Fonction RPC atomique : contrôle solde + insertion débit
+│       │                           sous advisory lock par app (anti double-dépense).
+│       ├── 017_transactions_payout.sql  transactions.type ('payin'|'payout') + colonnes payout.
+│       └── 018_platform_ledger.sql  Solde PLATEFORME (argent propre MobileWallet) + vue platform_balance.
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── scripts/dump_openapi.py       Dump du schéma OpenAPI.
@@ -178,6 +197,54 @@ l'écoulé étant compté depuis :
   `created_at`) ;
 - `successful` → la VALIDATION de l'USSD (`validated_at`, fallback `created_at`),
   message « Vous avez récemment effectué un paiement… ».
+
+## Comptabilité multi-tenant : soldes & retraits (payout)
+
+**MobileWallet est lui-même un agrégateur.** Côté DigiKUNTZ il n'existe qu'**un
+seul compte global** où atterrit l'argent de TOUTES les apps de tous les users
+(tous les payins). DigiKUNTZ ne connaît pas nos apps : c'est un pot commun unique.
+C'est donc à **nous** de tenir le **solde de chaque app**.
+
+- **Grand livre (`app_ledger`)** : une ligne par mouvement — `credit` (payin réussi
+  de l'app) ou `debit` (payout de l'app). Le **solde** d'une app = `SUM(credit) −
+  SUM(debit)` (vue `app_balance`). Source de vérité unique, auditable.
+- **Invariant comptable** : `Σ soldes des apps == solde réel du compte global
+  DigiKUNTZ`. Une app ne peut JAMAIS retirer plus qu'elle n'a encaissé (sinon elle
+  retirerait l'argent d'une autre). Le solde global réel se lit côté agrégateur via
+  `status_poll.fetch_global_balance()` (GET `{base}/balance`) ; `GET /admin/reconciliation`
+  compare `Σ soldes apps` (db.total_apps_balance) à ce solde global et signale tout écart.
+  Le solde global est une donnée de trésorerie **réservée à l'admin** (un client ne
+  voit que le solde de son app via `GET /balance`).
+- **Solde plateforme (`platform_ledger`)** : l'argent PROPRE de MobileWallet
+  (marge/frais/flottant), distinct des apps clientes. L'admin le recharge
+  (`POST /admin/platform/credit`) et retire dessus (`POST /admin/platform/payout`)
+  **sans contrôle de solde** (peut devenir négatif). L'invariant complet est donc
+  `Σ soldes apps + solde plateforme == solde global DigiKUNTZ` (cf. `/admin/reconciliation`).
+- **Crédit au payin** : le solde est crédité quand un payin devient `successful`
+  (settle polling OU webhook), via `db.credit_app(...)` — **idempotent** (unique
+  `(transaction_id, direction)`), donc aucun double crédit même si polling et
+  webhook concourent. `db.backfill_ledger_from_transactions()` (endpoint
+  `POST /admin/ledger/backfill`) amorce les soldes depuis l'historique.
+
+### Flux d'un retrait `POST /payout`
+1. Garde anti-doublon par bénéficiaire (un seul payout `pending` par
+   `account_number`).
+2. Insère la transaction `pending` (`type='payout'`).
+3. **RÉSERVE atomique** du solde : `db.reserve_payout(app_id, amount, tx_id)` appelle
+   la RPC Postgres (advisory lock par app) qui contrôle le solde ET insère le débit
+   dans la même transaction. Solde insuffisant → **422** (aucun appel DigiKUNTZ).
+4. `initiate_payout` (`POST {base}/payout`). Panne amont → **503** + remboursement
+   du débit ; refus immédiat → `failed` + remboursement.
+5. Réponse immédiate `pending` ; `poll_payout_status` (hors requête) attend le
+   verdict terminal (mapping `payout_*`, registre webhook⇄polling, sans timeout).
+6. Verdict : `successful` → le débit reste ; `failed`/`cancelled` → **remboursement**
+   (crédit compensatoire idempotent, reason `payout_refund`). Verdict poussé au
+   client via webhook signé + Socket.IO ; consultable par `GET /status/{ref}`.
+
+> Règle : on **réserve (débite) à l'initiation** et on **rembourse si le retrait
+> échoue** → un payout en vol bloque déjà les fonds (pas de double-dépense) et
+> l'invariant tient à tout instant. Les statuts `payout_*` sont des faits opérateur
+> mécaniques (exception CLAUDE.md autorisée), pas un verdict déduit par le code.
 
 ## Concurrence
 
