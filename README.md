@@ -101,7 +101,8 @@ FastAPI génère automatiquement la doc OpenAPI :
 | Méthode | Route | Rôle |
 |---|---|---|
 | GET | `/health` | statut + agrégateurs |
-| GET | `/aggregators` | modules disponibles + réseaux supportés |
+| GET | `/aggregators` | modules disponibles + réseaux + taux de frais |
+| GET | `/aggregators/{name}/fees` | taux détaillés + simulation pour un montant |
 | POST | `/pay` | exécuter un paiement (encaissement) |
 | POST | `/payout` | effectuer un virement (retrait), débité du solde de l'app |
 | GET | `/balance` | solde courant de votre app (XAF) |
@@ -126,6 +127,8 @@ FastAPI génère automatiquement la doc OpenAPI :
 | GET | `/admin/platform/balance` | solde plateforme (argent propre MobileWallet) |
 | POST | `/admin/platform/credit` | recharger le solde plateforme |
 | POST | `/admin/platform/payout` | virement débité de la plateforme (sans contrôle de solde) |
+| GET | `/admin/aggregators/{name}/fees` | lire la config de commission d'un agrégateur |
+| PUT | `/admin/aggregators/{name}/fees` | modifier les taux (effet immédiat, sans redémarrage) |
 
 > **Solde plateforme** : l'argent propre de MobileWallet (marge/frais/flottant),
 > distinct des apps clientes. L'admin le recharge (`/admin/platform/credit`) et

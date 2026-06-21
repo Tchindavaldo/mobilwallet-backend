@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter
 
 from core.db import db
+from core.fees import compute_fees
 from core.notifications import notify_settled
 
 log = logging.getLogger("ai_browser2")
@@ -47,9 +48,16 @@ async def digikuntz_webhook(payload: dict):
             app_id = row.get("app_id")
             if app_id and row.get("id"):
                 if row_type == "payin" and internal == "successful":
-                    await db.credit_app(app_id, row.get("amount", 0),
+                    # Split : frais agrégateur + commission MW → plateforme, reste → app.
+                    config = await db.get_aggregator_config(row.get("aggregator", ""))
+                    breakdown = compute_fees(row.get("amount", 0), config)
+                    await db.credit_app(app_id, breakdown.app_amount,
                                         transaction_id=row["id"],
                                         reason="payin_successful")
+                    if breakdown.platform_amount > 0:
+                        await db.credit_platform(breakdown.platform_amount,
+                                                  transaction_id=row["id"],
+                                                  reason="payin_fees")
                 elif row_type == "payout" and internal in ("failed", "cancelled"):
                     await db.credit_app(app_id, row.get("amount", 0),
                                         transaction_id=row["id"],

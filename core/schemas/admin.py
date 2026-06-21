@@ -1,7 +1,8 @@
 """Modèles request/response des endpoints admin (gestion multi-tenant)."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from core.schemas.payments import PayResponse
+from core.schemas.payout import _normalize_cm_phone
 
 
 class DeveloperCreate(BaseModel):
@@ -62,7 +63,7 @@ class AdminPayoutRequest(BaseModel):
     amount: int = Field(..., description="Montant à virer en XAF.", examples=[5000])
     account_bank_code: str = Field(..., description="Réseau du bénéficiaire — STRICT : "
                                    "exactement 'ORANGEMONEY' ou 'MTN'.", examples=["MTN"])
-    account_number: str = Field(..., description="Numéro du compte bénéficiaire.",
+    account_number: str = Field(..., description="Numéro du compte bénéficiaire (local ou avec indicatif pays).",
                                 examples=["237691224472"])
     receiver_name: str = Field(..., description="Nom du bénéficiaire.", examples=["John Doe"])
     currency: str = Field("XAF", description="Devise du virement.")
@@ -71,3 +72,29 @@ class AdminPayoutRequest(BaseModel):
     callback_url: str = Field("", description="URL de callback (défaut: celle de l'app).")
     end_user_ref: str | None = Field(
         None, description="Identifiant opaque de l'utilisateur final ; facultatif.")
+
+    @field_validator("account_number")
+    @classmethod
+    def normalize_account_number(cls, v: str) -> str:
+        return _normalize_cm_phone(v)
+
+
+class AggregatorConfigUpdate(BaseModel):
+    """Mise à jour de la config de commission d'un agrégateur (admin)."""
+    display_name: str | None = Field(None, description="Nom d'affichage.", examples=["DigiKUNTZ"])
+    aggregator_fee_rate: float | None = Field(
+        None, ge=0, lt=1,
+        description="Taux prélevé par l'agrégateur sur le brut (ex. 0.05 = 5%).",
+        examples=[0.05],
+    )
+    mw_commission_type: str | None = Field(
+        None, description="Type de commission MobileWallet : 'percent' ou 'flat'.",
+        examples=["percent"],
+    )
+    mw_commission_value: float | None = Field(
+        None, ge=0,
+        description="Valeur de la commission MW : taux (ex. 0.05) si type=percent, "
+                    "montant fixe XAF si type=flat.",
+        examples=[0.05],
+    )
+    active: bool | None = Field(None, description="Activer / désactiver l'agrégateur.")

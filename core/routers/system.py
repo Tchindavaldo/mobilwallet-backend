@@ -1,12 +1,14 @@
 """Routes système : santé, introspection des agrégateurs, seuil d'onglets."""
 
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from core import registry
 from core import runtime
 from core.db import db
+from core.fees import fees_info
 from core.schemas.system import MaxTabsRequest
 
 log = logging.getLogger("ai_browser2")
@@ -22,13 +24,53 @@ async def health():
 
 @router.get("/aggregators", tags=["system"], summary="Agrégateurs disponibles")
 async def list_aggregators():
-    """Liste les agrégateurs et, pour chacun, les réseaux exacts acceptés."""
+    """Liste les agrégateurs, leurs réseaux acceptés et leurs taux de frais."""
+    configs = {c["name"]: c for c in await db.list_aggregator_configs()}
     return {
         "aggregators": [
-            {"name": name, "supported_networks": registry.get(name).supported_networks}
+            {
+                "name": name,
+                "supported_networks": registry.get(name).supported_networks,
+                "aggregator_fee_rate": float(
+                    (configs.get(name) or {}).get("aggregator_fee_rate") or 0
+                ),
+                "mw_commission_type": (configs.get(name) or {}).get(
+                    "mw_commission_type", "percent"
+                ),
+                "mw_commission_value": float(
+                    (configs.get(name) or {}).get("mw_commission_value") or 0
+                ),
+            }
             for name in registry.names()
         ]
     }
+
+
+@router.get("/aggregators/{name}/fees", tags=["system"],
+            summary="Détail des frais pour un agrégateur")
+async def aggregator_fees(
+    name: str,
+    amount: Optional[int] = Query(None, description="Simuler la ventilation pour ce montant (XAF)"),
+):
+    """Retourne les taux de frais de l'agrégateur et, si `amount` est fourni,
+    la ventilation exacte (frais agrégateur, commission MW, montant crédité à l'app).
+
+    Utile pour les backends clients qui veulent afficher les frais à leur utilisateur.
+    """
+    if name not in registry.names():
+        raise HTTPException(404, f"Agrégateur '{name}' inconnu")
+    config = await db.get_aggregator_config(name)
+    result: dict = {
+        "aggregator": name,
+        "aggregator_fee_rate": float((config or {}).get("aggregator_fee_rate") or 0),
+        "mw_commission_type": (config or {}).get("mw_commission_type", "percent"),
+        "mw_commission_value": float((config or {}).get("mw_commission_value") or 0),
+    }
+    if amount is not None:
+        if amount <= 0:
+            raise HTTPException(400, "amount doit être > 0")
+        result["simulation"] = fees_info(amount, config)
+    return result
 
 
 @router.get("/config/max-tabs", tags=["system"], summary="Seuil d'onglets par navigateur")
