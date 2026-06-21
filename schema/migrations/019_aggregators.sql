@@ -20,5 +20,5 @@ create table if not exists aggregators (
 
 -- Pré-remplir DigiKUNTZ : 5% agrégateur, 5% MobileWallet sur le net.
 insert into aggregators (name, display_name, aggregator_fee_rate, mw_commission_type, mw_commission_value)
-values ('digikuntz', 'DigiKUNTZ', 0.05, 'percent', 0.05)
+values ('digikuntz', 'DigiKUNTZ', 0.05, 'flat', 5)
 on conflict (name) do nothing;
