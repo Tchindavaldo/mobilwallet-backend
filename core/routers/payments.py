@@ -124,19 +124,22 @@ async def _credit_on_success(
     app_id: int | None, tx_id: int | None,
     result: PaymentResult, amount: int, aggregator: str = "",
 ) -> None:
-    """Split comptable d'un payin réussi : crédite l'app (net) et la plateforme (frais).
+    """Split comptable d'un payin réussi : crédite l'app (net) et la plateforme (commission).
 
-    Flux : brut → frais agrégateur → net → commission MW → app + plateforme.
+    Flux : brut → commission MW (défaut agrégateur ou surcharge app) → app + plateforme.
+    Les frais DigiKUNTZ sont prélevés directement sur le client via USSD (hors comptabilité).
     Idempotent (unique transaction_id/direction en BD). No-op si pas de succès,
     pas d'app, ou pas de tx_id."""
     if not (app_id and tx_id and result.final_status == "successful"):
         return
-    config = await db.get_aggregator_config(aggregator) if aggregator else None
-    breakdown = compute_fees(amount, config)
+    agg_config = await db.get_aggregator_config(aggregator) if aggregator else None
+    app_config = await db.get_app_commission(app_id) if app_id else None
+    breakdown = compute_fees(amount, agg_config, app_config)
     log.info(
-        "payin split tx=%s: gross=%s agg_fee=%s mw_comm=%s app=%s platform=%s",
-        tx_id, breakdown.gross, breakdown.aggregator_fee,
-        breakdown.mw_commission, breakdown.app_amount, breakdown.platform_amount,
+        "payin split tx=%s: gross=%s mw_comm=%s app=%s platform=%s (agg=%s app_override=%s)",
+        tx_id, breakdown.gross, breakdown.mw_commission,
+        breakdown.app_amount, breakdown.platform_amount,
+        aggregator, app_config is not None,
     )
     await db.credit_app(app_id, breakdown.app_amount,
                         transaction_id=tx_id, reason="payin_successful")

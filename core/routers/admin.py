@@ -12,8 +12,8 @@ from core import auth, tenants
 from core.auth import require_admin
 from core.db import db
 from core.schemas.admin import (
-    AdminPayoutRequest, AdminPayRequest, AggregatorConfigUpdate, ApiKeyCreate,
-    ApiKeyCreated, AppCreate, DeveloperCreate, PlatformCredit,
+    AdminPayoutRequest, AdminPayRequest, AggregatorConfigUpdate, AppCommissionUpdate,
+    ApiKeyCreate, ApiKeyCreated, AppCreate, DeveloperCreate, PlatformCredit,
 )
 from core.schemas.payments import PayResponse
 from core.schemas.payout import PayoutRequest, PayoutResponse
@@ -165,6 +165,42 @@ async def admin_payout(
         end_user_ref=body.end_user_ref,
     )
     return await _execute_payout(req, app_id=app_id, api_key_id=None, debug=debug)
+
+
+@router.get("/apps/{app_id}/commission",
+            summary="Lire la commission MW d'une app (None = défaut agrégateur)")
+async def admin_get_app_commission(app_id: int):
+    """Retourne la commission spécifique de l'app, ou null si elle utilise le défaut."""
+    config = await db.get_app_commission(app_id)
+    return {
+        "app_id": app_id,
+        "mw_commission_type": config["mw_commission_type"] if config else None,
+        "mw_commission_value": config["mw_commission_value"] if config else None,
+        "uses_default": config is None,
+    }
+
+
+@router.put("/apps/{app_id}/commission",
+            summary="Définir une commission MW spécifique pour une app")
+async def admin_set_app_commission(app_id: int, body: AppCommissionUpdate):
+    """Pose ou efface la commission MW d'une app.
+
+    - `mw_commission_type` + `mw_commission_value` non null → commission spécifique.
+    - Les deux à null → revenir au défaut de l'agrégateur.
+    Effet immédiat sur les prochains payins de cette app.
+    """
+    if body.mw_commission_type and body.mw_commission_type not in ("percent", "flat"):
+        raise HTTPException(400, "mw_commission_type doit être 'percent' ou 'flat'")
+    ok = await db.set_app_commission(
+        app_id,
+        mw_commission_type=body.mw_commission_type,
+        mw_commission_value=body.mw_commission_value,
+    )
+    if not ok:
+        raise HTTPException(503, "Supabase non configuré")
+    return {"app_id": app_id, "mw_commission_type": body.mw_commission_type,
+            "mw_commission_value": body.mw_commission_value,
+            "uses_default": body.mw_commission_type is None}
 
 
 @router.get("/apps/{app_id}/balance", summary="Solde courant d'une app")

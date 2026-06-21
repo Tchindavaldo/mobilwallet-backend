@@ -1549,6 +1549,126 @@
         }
       }
     },
+    "/admin/apps/{app_id}/commission": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Lire la commission MW d'une app (None = défaut agrégateur)",
+        "description": "Retourne la commission spécifique de l'app, ou null si elle utilise le défaut.",
+        "operationId": "admin_get_app_commission_admin_apps__app_id__commission_get",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Définir une commission MW spécifique pour une app",
+        "description": "Pose ou efface la commission MW d'une app.\n\n- `mw_commission_type` + `mw_commission_value` non null → commission spécifique.\n- Les deux à null → revenir au défaut de l'agrégateur.\nEffet immédiat sur les prochains payins de cette app.",
+        "operationId": "admin_set_app_commission_admin_apps__app_id__commission_put",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppCommissionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/apps/{app_id}/balance": {
       "get": {
         "tags": [
@@ -2414,6 +2534,44 @@
         ],
         "title": "ApiKeyCreated",
         "description": "Réponse à la création d'une clé : la clé en clair n'est montrée QU'ICI."
+      },
+      "AppCommissionUpdate": {
+        "properties": {
+          "mw_commission_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mw Commission Type",
+            "description": "'percent' ou 'flat'. None = revenir au défaut agrégateur.",
+            "examples": [
+              "flat"
+            ]
+          },
+          "mw_commission_value": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mw Commission Value",
+            "description": "Valeur : taux (ex. 0.03) si percent, montant XAF fixe (ex. 2) si flat. None = revenir au défaut agrégateur.",
+            "examples": [
+              2
+            ]
+          }
+        },
+        "type": "object",
+        "title": "AppCommissionUpdate",
+        "description": "Commission MobileWallet spécifique pour une app (surcharge le défaut agrégateur)."
       },
       "AppCreate": {
         "properties": {

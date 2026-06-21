@@ -79,6 +79,20 @@ class AdminPayoutRequest(BaseModel):
         return _normalize_cm_phone(v)
 
 
+class AppCommissionUpdate(BaseModel):
+    """Commission MobileWallet spécifique pour une app (surcharge le défaut agrégateur)."""
+    mw_commission_type: str | None = Field(
+        None, description="'percent' ou 'flat'. None = revenir au défaut agrégateur.",
+        examples=["flat"],
+    )
+    mw_commission_value: float | None = Field(
+        None, ge=0,
+        description="Valeur : taux (ex. 0.03) si percent, montant XAF fixe (ex. 2) si flat. "
+                    "None = revenir au défaut agrégateur.",
+        examples=[2],
+    )
+
+
 class AggregatorConfigUpdate(BaseModel):
     """Mise à jour de la config de commission d'un agrégateur (admin)."""
     display_name: str | None = Field(None, description="Nom d'affichage.", examples=["DigiKUNTZ"])

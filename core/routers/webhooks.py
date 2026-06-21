@@ -48,9 +48,11 @@ async def digikuntz_webhook(payload: dict):
             app_id = row.get("app_id")
             if app_id and row.get("id"):
                 if row_type == "payin" and internal == "successful":
-                    # Split : frais agrégateur + commission MW → plateforme, reste → app.
-                    config = await db.get_aggregator_config(row.get("aggregator", ""))
-                    breakdown = compute_fees(row.get("amount", 0), config)
+                    # Split : commission MW (défaut agrégateur ou surcharge app) → plateforme, reste → app.
+                    # Les frais DigiKUNTZ sont pris directement sur le client (hors comptabilité).
+                    agg_config = await db.get_aggregator_config(row.get("aggregator", ""))
+                    app_cfg = await db.get_app_commission(app_id)
+                    breakdown = compute_fees(row.get("amount", 0), agg_config, app_cfg)
                     await db.credit_app(app_id, breakdown.app_amount,
                                         transaction_id=row["id"],
                                         reason="payin_successful")

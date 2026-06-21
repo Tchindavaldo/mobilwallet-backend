@@ -247,6 +247,58 @@ class LedgerMixin:
             log.warning("list_aggregator_configs failed: %s", e)
             return []
 
+    async def get_app_commission(self, app_id: int) -> dict | None:
+        """Retourne la config commission MW de l'app (mw_commission_type/value).
+
+        None si l'app n'a pas de surcharge (→ l'appelant tombera sur le défaut
+        agrégateur). None aussi si BD désactivée ou app inconnue."""
+        if not self.enabled or not app_id:
+            return None
+
+        def _select():
+            res = (self._client.table("apps")
+                   .select("mw_commission_type, mw_commission_value")
+                   .eq("id", app_id).limit(1).execute())
+            if not res.data:
+                return None
+            row = res.data[0]
+            # NULL en BD = pas de surcharge
+            if row.get("mw_commission_type") is None:
+                return None
+            return row
+
+        try:
+            return await asyncio.to_thread(_select)
+        except Exception as e:  # noqa: BLE001
+            log.warning("get_app_commission(%s) failed: %s", app_id, e)
+            return None
+
+    async def set_app_commission(
+        self, app_id: int, *,
+        mw_commission_type: str | None,
+        mw_commission_value: float | None,
+    ) -> bool:
+        """Pose ou efface la commission spécifique d'une app.
+
+        Passer type=None et value=None pour revenir au défaut agrégateur."""
+        if not self.enabled or not app_id:
+            return False
+
+        patch = {
+            "mw_commission_type": mw_commission_type,
+            "mw_commission_value": float(mw_commission_value) if mw_commission_value is not None else None,
+        }
+
+        def _update():
+            self._client.table("apps").update(patch).eq("id", app_id).execute()
+            return True
+
+        try:
+            return await asyncio.to_thread(_update) or False
+        except Exception as e:  # noqa: BLE001
+            log.warning("set_app_commission(%s) failed: %s", app_id, e)
+            return False
+
     async def upsert_aggregator_config(
         self, name: str, *, display_name: str | None = None,
         aggregator_fee_rate: float | None = None,
