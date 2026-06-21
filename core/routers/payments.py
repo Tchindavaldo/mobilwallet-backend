@@ -206,14 +206,15 @@ async def _execute_payment(
             },
         )
 
+    label = f"MobileWallet-{app_name}" if app_name else "MobileWallet"
     payment = PaymentRequest(
         amount=req.amount,
         phone=req.phone,
         network=canonical_network,
         email=req.email,
-        sender_name=req.sender_name,
+        sender_name=label,
         callback_url=req.callback_url,
-        raison=f"MobileWallet-{app_name}" if app_name else "MobileWallet",
+        raison=label,
     )
 
     await _guard_duplicate(req)
