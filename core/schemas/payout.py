@@ -1,6 +1,22 @@
 """Modèles request/response du domaine payout (/payout — virements sortants)."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _normalize_cm_phone(v: str) -> str:
+    """Normalise un numéro camerounais vers le format sans indicatif international.
+
+    Entrées acceptées : "677087298", "+237677087298", "00237677087298", "237677087298"
+    Sortie : "237677087298" (format attendu par DigiKUNTZ).
+    """
+    v = v.strip()
+    if v.startswith("00237"):
+        v = v[2:]   # "00237..." -> "237..."
+    elif v.startswith("+237"):
+        v = v[1:]   # "+237..." -> "237..."
+    elif not v.startswith("237"):
+        v = "237" + v
+    return v
 
 
 class PayoutRequest(BaseModel):
@@ -10,7 +26,13 @@ class PayoutRequest(BaseModel):
                          "'MTN' (aucune variante/conversion ; 422 sinon).",
         examples=["MTN"])
     account_number: str = Field(
-        ..., description="Numéro du compte bénéficiaire.", examples=["237691224472"])
+        ..., description="Numéro du compte bénéficiaire (local ou avec indicatif pays).",
+        examples=["237691224472"])
+
+    @field_validator("account_number")
+    @classmethod
+    def normalize_account_number(cls, v: str) -> str:
+        return _normalize_cm_phone(v)
     receiver_name: str = Field(..., description="Nom du bénéficiaire.", examples=["John Doe"])
     currency: str = Field("XAF", description="Devise du virement.", examples=["XAF"])
     narration: str = Field("", description="Motif / libellé du virement.",
