@@ -12,6 +12,7 @@ from core.notifications import notify_settled
 from core.config import settings
 from core.db import db
 from core.error_tracking import build_errors
+from core.fees import compute_fees
 from core.schemas.payments import PayRequest, PayResponse, PayResponseDebug
 from core.upstream_errors import OPERATOR_UNAVAILABLE, UPSTREAM_CODES, UPSTREAM_MESSAGES
 
@@ -107,7 +108,7 @@ async def _mock_finalize_after_delay(
     await db.update_transaction(tx_id, result)
 
     # Crédite le solde de l'app si succès (idempotent), puis notifie.
-    await _credit_on_success(app_id, tx_id, result, req.amount)
+    await _credit_on_success(app_id, tx_id, result, req.amount, req.aggregator)
 
     # Envoyer les notifications (Socket + webhook)
     notify_settled(
@@ -119,16 +120,32 @@ async def _mock_finalize_after_delay(
     )
 
 
-async def _credit_on_success(app_id: int | None, tx_id: int | None,
-                             result: PaymentResult, amount: int) -> None:
-    """Crédite le solde de l'app si le payin a réussi. Idempotent (ledger).
+async def _credit_on_success(
+    app_id: int | None, tx_id: int | None,
+    result: PaymentResult, amount: int, aggregator: str = "",
+) -> None:
+    """Split comptable d'un payin réussi : crédite l'app (net) et la plateforme (commission).
 
-    MobileWallet tient le solde de chaque app (DigiKUNTZ n'a qu'un compte global) :
-    un encaissement réussi crédite l'app qui l'a déclenché. No-op si pas de succès,
-    pas d'app, ou pas de tx_id (le crédit doit être rattaché à une transaction)."""
-    if app_id and tx_id and result.final_status == "successful":
-        await db.credit_app(app_id, amount, transaction_id=tx_id,
-                            reason="payin_successful")
+    Flux : brut → commission MW (défaut agrégateur ou surcharge app) → app + plateforme.
+    Les frais DigiKUNTZ sont prélevés directement sur le client via USSD (hors comptabilité).
+    Idempotent (unique transaction_id/direction en BD). No-op si pas de succès,
+    pas d'app, ou pas de tx_id."""
+    if not (app_id and tx_id and result.final_status == "successful"):
+        return
+    agg_config = await db.get_aggregator_config(aggregator) if aggregator else None
+    app_config = await db.get_app_commission(app_id) if app_id else None
+    breakdown = compute_fees(amount, agg_config, app_config)
+    log.info(
+        "payin split tx=%s: gross=%s mw_comm=%s app=%s platform=%s (agg=%s app_override=%s)",
+        tx_id, breakdown.gross, breakdown.mw_commission,
+        breakdown.app_amount, breakdown.platform_amount,
+        aggregator, app_config is not None,
+    )
+    await db.credit_app(app_id, breakdown.app_amount,
+                        transaction_id=tx_id, reason="payin_successful")
+    if breakdown.platform_amount > 0:
+        await db.credit_platform(breakdown.platform_amount,
+                                 transaction_id=tx_id, reason="payin_fees")
 
 
 async def _execute_payment(
@@ -136,6 +153,7 @@ async def _execute_payment(
     app_id: int,
     api_key_id: int | None,
     debug: bool = False,
+    app_name: str = "",
 ) -> PayResponse | PayResponseDebug:
     """Logique partagée d'exécution de paiement (réutilisée par /pay ET /admin/apps/{app_id}/pay).
 
@@ -195,6 +213,7 @@ async def _execute_payment(
         email=req.email,
         sender_name=req.sender_name,
         callback_url=req.callback_url,
+        raison=f"MobileWallet-{app_name}" if app_name else "MobileWallet",
     )
 
     await _guard_duplicate(req)
@@ -269,7 +288,7 @@ async def _execute_payment(
         else:
             # Verdict déjà terminal (succès/échec avant USSD, panne) : on crédite
             # le solde si succès (idempotent), puis on notifie (no-op si non terminal).
-            await _credit_on_success(app_id, tx_id, result, req.amount)
+            await _credit_on_success(app_id, tx_id, result, req.amount, req.aggregator)
             notify_settled(
                 tx_id, result, transaction_ref=result.transaction_id,
                 amount=req.amount, network=req.network, phone=req.phone,
@@ -307,7 +326,7 @@ async def _finalize_in_background(agg, payment, result, tx_id, req, engine_used,
             await agg.finalize_after_close(payment, result)
         result = _settle(result, engine_used)
         await db.update_transaction(tx_id, result)
-        await _credit_on_success(app_id, tx_id, result, req.amount)
+        await _credit_on_success(app_id, tx_id, result, req.amount, req.aggregator)
         notify_settled(
             tx_id, result, transaction_ref=result.transaction_id,
             amount=req.amount, network=req.network, phone=req.phone,
@@ -349,7 +368,8 @@ async def pay(
     - **browser** : flux IA complet ; déduit et persiste le template curl.
     - **replay** : rejoue via le template stocké (409 si absent).
     """
-    return await _execute_payment(req, ctx.app_id, ctx.api_key_id, debug)
+    return await _execute_payment(req, ctx.app_id, ctx.api_key_id, debug,
+                                  app_name=ctx.app_name)
 
 
 async def _guard_duplicate(req: PayRequest) -> None:

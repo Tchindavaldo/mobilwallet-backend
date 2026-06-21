@@ -32,7 +32,7 @@
           "system"
         ],
         "summary": "Agrégateurs disponibles",
-        "description": "Liste les agrégateurs et, pour chacun, les réseaux exacts acceptés.",
+        "description": "Liste les agrégateurs, leurs réseaux acceptés et leurs taux de frais.",
         "operationId": "list_aggregators_aggregators_get",
         "responses": {
           "200": {
@@ -40,6 +40,65 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/aggregators/{name}/fees": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Détail des frais pour un agrégateur",
+        "description": "Retourne les taux de frais de l'agrégateur et, si `amount` est fourni,\nla ventilation exacte (frais agrégateur, commission MW, montant crédité à l'app).\n\nUtile pour les backends clients qui veulent afficher les frais à leur utilisateur.",
+        "operationId": "aggregator_fees_aggregators__name__fees_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "amount",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Simuler la ventilation pour ce montant (XAF)",
+              "title": "Amount"
+            },
+            "description": "Simuler la ventilation pour ce montant (XAF)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -1490,6 +1549,126 @@
         }
       }
     },
+    "/admin/apps/{app_id}/commission": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Lire la commission MW d'une app (None = défaut agrégateur)",
+        "description": "Retourne la commission spécifique de l'app, ou null si elle utilise le défaut.",
+        "operationId": "admin_get_app_commission_admin_apps__app_id__commission_get",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Définir une commission MW spécifique pour une app",
+        "description": "Pose ou efface la commission MW d'une app.\n\n- `mw_commission_type` + `mw_commission_value` non null → commission spécifique.\n- Les deux à null → revenir au défaut de l'agrégateur.\nEffet immédiat sur les prochains payins de cette app.",
+        "operationId": "admin_set_app_commission_admin_apps__app_id__commission_put",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppCommissionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/apps/{app_id}/balance": {
       "get": {
         "tags": [
@@ -1924,6 +2103,126 @@
           }
         }
       }
+    },
+    "/admin/aggregators/{name}/fees": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Lire la config de commission d'un agrégateur",
+        "description": "Retourne la config complète (taux agrégateur + commission MW) d'un agrégateur.",
+        "operationId": "admin_get_aggregator_fees_admin_aggregators__name__fees_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Modifier la config de commission d'un agrégateur",
+        "description": "Crée ou met à jour les taux de commission pour un agrégateur.\n\n- `aggregator_fee_rate` : taux prélevé par l'agrégateur (ex. 0.05 = 5%).\n- `mw_commission_type` + `mw_commission_value` : commission MobileWallet sur le net.\n  Type `percent` (ex. 0.05 = 5%) ou `flat` (montant fixe XAF, ex. 500).\n\nEffet immédiat sur les prochains payins : aucun redémarrage nécessaire.",
+        "operationId": "admin_update_aggregator_fees_admin_aggregators__name__fees_put",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AggregatorConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2039,7 +2338,7 @@
           "account_number": {
             "type": "string",
             "title": "Account Number",
-            "description": "Numéro du compte bénéficiaire.",
+            "description": "Numéro du compte bénéficiaire (local ou avec indicatif pays).",
             "examples": [
               "237691224472"
             ]
@@ -2099,6 +2398,88 @@
         "title": "AdminPayoutRequest",
         "description": "Requête de virement (payout) lancée par un admin pour une app spécifique."
       },
+      "AggregatorConfigUpdate": {
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name",
+            "description": "Nom d'affichage.",
+            "examples": [
+              "DigiKUNTZ"
+            ]
+          },
+          "aggregator_fee_rate": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aggregator Fee Rate",
+            "description": "Taux prélevé par l'agrégateur sur le brut (ex. 0.05 = 5%).",
+            "examples": [
+              0.05
+            ]
+          },
+          "mw_commission_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mw Commission Type",
+            "description": "Type de commission MobileWallet : 'percent' ou 'flat'.",
+            "examples": [
+              "percent"
+            ]
+          },
+          "mw_commission_value": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mw Commission Value",
+            "description": "Valeur de la commission MW : taux (ex. 0.05) si type=percent, montant fixe XAF si type=flat.",
+            "examples": [
+              0.05
+            ]
+          },
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active",
+            "description": "Activer / désactiver l'agrégateur."
+          }
+        },
+        "type": "object",
+        "title": "AggregatorConfigUpdate",
+        "description": "Mise à jour de la config de commission d'un agrégateur (admin)."
+      },
       "ApiKeyCreate": {
         "properties": {
           "env": {
@@ -2153,6 +2534,44 @@
         ],
         "title": "ApiKeyCreated",
         "description": "Réponse à la création d'une clé : la clé en clair n'est montrée QU'ICI."
+      },
+      "AppCommissionUpdate": {
+        "properties": {
+          "mw_commission_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mw Commission Type",
+            "description": "'percent' ou 'flat'. None = revenir au défaut agrégateur.",
+            "examples": [
+              "flat"
+            ]
+          },
+          "mw_commission_value": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mw Commission Value",
+            "description": "Valeur : taux (ex. 0.03) si percent, montant XAF fixe (ex. 2) si flat. None = revenir au défaut agrégateur.",
+            "examples": [
+              2
+            ]
+          }
+        },
+        "type": "object",
+        "title": "AppCommissionUpdate",
+        "description": "Commission MobileWallet spécifique pour une app (surcharge le défaut agrégateur)."
       },
       "AppCreate": {
         "properties": {
@@ -2437,7 +2856,7 @@
           "account_number": {
             "type": "string",
             "title": "Account Number",
-            "description": "Numéro du compte bénéficiaire.",
+            "description": "Numéro du compte bénéficiaire (local ou avec indicatif pays).",
             "examples": [
               "237691224472"
             ]

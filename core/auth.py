@@ -36,6 +36,7 @@ class AuthContext:
     env: str                 # 'test' | 'live'
     callback_url: str
     webhook_secret: str
+    app_name: str = ""
 
 
 # --- Génération / hachage des clés -------------------------------------------
@@ -130,6 +131,7 @@ async def require_api_key(authorization: str = Header(None)) -> AuthContext:
         env=row["env"],
         callback_url=row.get("callback_url") or "",
         webhook_secret=row.get("webhook_secret") or "",
+        app_name=row.get("app_name") or "",
     )
     _cache_put(key_hash, ctx)
     return ctx

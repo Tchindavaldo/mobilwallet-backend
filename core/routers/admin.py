@@ -12,8 +12,8 @@ from core import auth, tenants
 from core.auth import require_admin
 from core.db import db
 from core.schemas.admin import (
-    AdminPayoutRequest, AdminPayRequest, ApiKeyCreate, ApiKeyCreated, AppCreate,
-    DeveloperCreate, PlatformCredit,
+    AdminPayoutRequest, AdminPayRequest, AggregatorConfigUpdate, AppCommissionUpdate,
+    ApiKeyCreate, ApiKeyCreated, AppCreate, DeveloperCreate, PlatformCredit,
 )
 from core.schemas.payments import PayResponse
 from core.schemas.payout import PayoutRequest, PayoutResponse
@@ -167,6 +167,42 @@ async def admin_payout(
     return await _execute_payout(req, app_id=app_id, api_key_id=None, debug=debug)
 
 
+@router.get("/apps/{app_id}/commission",
+            summary="Lire la commission MW d'une app (None = défaut agrégateur)")
+async def admin_get_app_commission(app_id: int):
+    """Retourne la commission spécifique de l'app, ou null si elle utilise le défaut."""
+    config = await db.get_app_commission(app_id)
+    return {
+        "app_id": app_id,
+        "mw_commission_type": config["mw_commission_type"] if config else None,
+        "mw_commission_value": config["mw_commission_value"] if config else None,
+        "uses_default": config is None,
+    }
+
+
+@router.put("/apps/{app_id}/commission",
+            summary="Définir une commission MW spécifique pour une app")
+async def admin_set_app_commission(app_id: int, body: AppCommissionUpdate):
+    """Pose ou efface la commission MW d'une app.
+
+    - `mw_commission_type` + `mw_commission_value` non null → commission spécifique.
+    - Les deux à null → revenir au défaut de l'agrégateur.
+    Effet immédiat sur les prochains payins de cette app.
+    """
+    if body.mw_commission_type and body.mw_commission_type not in ("percent", "flat"):
+        raise HTTPException(400, "mw_commission_type doit être 'percent' ou 'flat'")
+    ok = await db.set_app_commission(
+        app_id,
+        mw_commission_type=body.mw_commission_type,
+        mw_commission_value=body.mw_commission_value,
+    )
+    if not ok:
+        raise HTTPException(503, "Supabase non configuré")
+    return {"app_id": app_id, "mw_commission_type": body.mw_commission_type,
+            "mw_commission_value": body.mw_commission_value,
+            "uses_default": body.mw_commission_type is None}
+
+
 @router.get("/apps/{app_id}/balance", summary="Solde courant d'une app")
 async def admin_app_balance(app_id: int):
     """Solde logique de l'app = somme des encaissements réussis − ses retraits."""
@@ -275,3 +311,41 @@ async def admin_platform_payout(
         end_user_ref=body.end_user_ref,
     )
     return await execute_platform_payout(req, debug=debug)
+
+
+# --- Config des commissions par agrégateur ---
+
+@router.get("/aggregators/{name}/fees",
+            summary="Lire la config de commission d'un agrégateur")
+async def admin_get_aggregator_fees(name: str):
+    """Retourne la config complète (taux agrégateur + commission MW) d'un agrégateur."""
+    config = await db.get_aggregator_config(name)
+    if config is None:
+        raise HTTPException(404, f"Agrégateur '{name}' absent de la BD (migration 019 appliquée ?)")
+    return config
+
+
+@router.put("/aggregators/{name}/fees",
+            summary="Modifier la config de commission d'un agrégateur")
+async def admin_update_aggregator_fees(name: str, body: AggregatorConfigUpdate):
+    """Crée ou met à jour les taux de commission pour un agrégateur.
+
+    - `aggregator_fee_rate` : taux prélevé par l'agrégateur (ex. 0.05 = 5%).
+    - `mw_commission_type` + `mw_commission_value` : commission MobileWallet sur le net.
+      Type `percent` (ex. 0.05 = 5%) ou `flat` (montant fixe XAF, ex. 500).
+
+    Effet immédiat sur les prochains payins : aucun redémarrage nécessaire.
+    """
+    if body.mw_commission_type and body.mw_commission_type not in ("percent", "flat"):
+        raise HTTPException(400, "mw_commission_type doit être 'percent' ou 'flat'")
+    row = await db.upsert_aggregator_config(
+        name,
+        display_name=body.display_name,
+        aggregator_fee_rate=body.aggregator_fee_rate,
+        mw_commission_type=body.mw_commission_type,
+        mw_commission_value=body.mw_commission_value,
+        active=body.active,
+    )
+    if row is None:
+        raise HTTPException(503, "Supabase non configuré")
+    return row

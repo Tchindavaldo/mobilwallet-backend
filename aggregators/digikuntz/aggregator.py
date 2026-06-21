@@ -144,7 +144,8 @@ class DigikuntzAggregator(Aggregator):
                  getattr(template, "flw_pub_key", ""))
         try:
             tx = await replay_flow.step1_create_transaction(
-                req.amount, req.phone, req.email, req.sender_name
+                req.amount, req.phone, req.email, req.sender_name,
+                raison=req.raison,
             )
         except Exception as e:  # noqa: BLE001 — surface any creation failure
             result.error = f"digikuntz create_transaction error: {e}"

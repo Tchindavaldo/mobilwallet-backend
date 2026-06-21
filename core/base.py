@@ -23,6 +23,7 @@ class PaymentRequest:
     email: str
     sender_name: str = "Rauvalia"
     callback_url: str = ""  # defaults to aggregator's callback if left empty
+    raison: str = "MobileWallet"  # libellé affiché sur le dashboard DigiKUNTZ
 
 
 @dataclass

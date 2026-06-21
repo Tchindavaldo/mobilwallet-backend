@@ -3,12 +3,14 @@
 Extrait de db.py pour garder chaque fichier sous le plafond de taille (CLAUDE.md).
 Cette classe N'EST PAS instanciée seule : elle est héritée par `Database`, dont elle
 utilise `self.enabled`, `self._client` (client Supabase) et `self._run` (exécuteur
-borné par timeout). Deux domaines :
+borné par timeout). Trois domaines :
 
   - app_ledger : grand livre par app (credit payin / debit payout) + solde dérivé
     (vue app_balance) + réservation atomique du solde (RPC reserve_payout) + backfill.
     MobileWallet est lui-même un agrégateur : DigiKUNTZ n'a qu'un compte global, donc
     c'est nous qui tenons le solde de chaque app. Invariant : Σ soldes == global.
+  - aggregators : config des taux par agrégateur (fee_rate, commission MW).
+    Lecture BD avec fallback sur les valeurs par défaut (agrégateur inconnu = 0%).
   - payouts : insert/last/update des retraits (même table transactions, type='payout').
 """
 
@@ -211,6 +213,124 @@ class LedgerMixin:
             return len(rows)
 
         return await self._run(_backfill) or 0
+
+    # --- aggregators (config des taux par agrégateur) ---
+
+    async def get_aggregator_config(self, name: str) -> dict | None:
+        """Retourne la config d'un agrégateur (taux, commission MW), ou None si absent."""
+        if not self.enabled or not name:
+            return None
+
+        def _select():
+            res = (self._client.table("aggregators").select("*")
+                   .eq("name", name).limit(1).execute())
+            return res.data[0] if res.data else None
+
+        try:
+            return await asyncio.to_thread(_select)
+        except Exception as e:  # noqa: BLE001
+            log.warning("get_aggregator_config(%s) failed: %s", name, e)
+            return None
+
+    async def list_aggregator_configs(self) -> list[dict]:
+        """Retourne toutes les configs d'agrégateurs (actifs ou non)."""
+        if not self.enabled:
+            return []
+
+        def _select():
+            res = self._client.table("aggregators").select("*").execute()
+            return res.data or []
+
+        try:
+            return await asyncio.to_thread(_select)
+        except Exception as e:  # noqa: BLE001
+            log.warning("list_aggregator_configs failed: %s", e)
+            return []
+
+    async def get_app_commission(self, app_id: int) -> dict | None:
+        """Retourne la config commission MW de l'app (mw_commission_type/value).
+
+        None si l'app n'a pas de surcharge (→ l'appelant tombera sur le défaut
+        agrégateur). None aussi si BD désactivée ou app inconnue."""
+        if not self.enabled or not app_id:
+            return None
+
+        def _select():
+            res = (self._client.table("apps")
+                   .select("mw_commission_type, mw_commission_value")
+                   .eq("id", app_id).limit(1).execute())
+            if not res.data:
+                return None
+            row = res.data[0]
+            # NULL en BD = pas de surcharge
+            if row.get("mw_commission_type") is None:
+                return None
+            return row
+
+        try:
+            return await asyncio.to_thread(_select)
+        except Exception as e:  # noqa: BLE001
+            log.warning("get_app_commission(%s) failed: %s", app_id, e)
+            return None
+
+    async def set_app_commission(
+        self, app_id: int, *,
+        mw_commission_type: str | None,
+        mw_commission_value: float | None,
+    ) -> bool:
+        """Pose ou efface la commission spécifique d'une app.
+
+        Passer type=None et value=None pour revenir au défaut agrégateur."""
+        if not self.enabled or not app_id:
+            return False
+
+        patch = {
+            "mw_commission_type": mw_commission_type,
+            "mw_commission_value": float(mw_commission_value) if mw_commission_value is not None else None,
+        }
+
+        def _update():
+            self._client.table("apps").update(patch).eq("id", app_id).execute()
+            return True
+
+        try:
+            return await asyncio.to_thread(_update) or False
+        except Exception as e:  # noqa: BLE001
+            log.warning("set_app_commission(%s) failed: %s", app_id, e)
+            return False
+
+    async def upsert_aggregator_config(
+        self, name: str, *, display_name: str | None = None,
+        aggregator_fee_rate: float | None = None,
+        mw_commission_type: str | None = None,
+        mw_commission_value: float | None = None,
+        active: bool | None = None,
+    ) -> dict | None:
+        """Crée ou met à jour la config d'un agrégateur. Retourne la ligne."""
+        if not self.enabled:
+            return None
+        patch: dict = {"name": name}
+        if display_name is not None:
+            patch["display_name"] = display_name
+        if aggregator_fee_rate is not None:
+            patch["aggregator_fee_rate"] = float(aggregator_fee_rate)
+        if mw_commission_type is not None:
+            patch["mw_commission_type"] = mw_commission_type
+        if mw_commission_value is not None:
+            patch["mw_commission_value"] = float(mw_commission_value)
+        if active is not None:
+            patch["active"] = active
+
+        def _upsert():
+            res = (self._client.table("aggregators")
+                   .upsert(patch, on_conflict="name").execute())
+            return res.data[0] if res.data else None
+
+        try:
+            return await asyncio.to_thread(_upsert)
+        except Exception as e:  # noqa: BLE001
+            log.warning("upsert_aggregator_config(%s) failed: %s", name, e)
+            return None
 
     # --- payouts (retraits : même table transactions, type='payout') ---
     async def insert_pending_payout(

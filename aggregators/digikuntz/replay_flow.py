@@ -299,7 +299,8 @@ def encrypt_payload(plaintext: str, public_key_b64: str) -> str:
 
 
 async def step1_create_transaction(
-    amount: int, phone: str, email: str, name: str
+    amount: int, phone: str, email: str, name: str,
+    raison: str = "MobileWallet",
 ) -> dict:
     """Create a digikuntz transaction, return {txRef, paymentLink, amount}.
 
@@ -310,7 +311,7 @@ async def step1_create_transaction(
     print(f"[1] Creating digikuntz transaction: {amount} XAF, {phone}")
     body = {
         "estimation": amount,
-        "raisonForTransfer": "Rauvalia replay",
+        "raisonForTransfer": raison,
         "userEmail": email,
         "userPhone": phone,
         "userCountry": "CM",
@@ -318,8 +319,7 @@ async def step1_create_transaction(
     }
     if _dk.use_callback and _dk.callback_url:
         body["callbackUrl"] = _dk.callback_url
-    log.info("[REPLAY][step1] use_callback=%s callbackUrl transmis=%s",
-             _dk.use_callback, "callbackUrl" in body)
+    log.info("[REPLAY][step1] payload envoyé à DigiKUNTZ: %s", body)
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             f"{DIGIKUNTZ_BASE}/transaction",
