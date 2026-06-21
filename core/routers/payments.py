@@ -153,6 +153,7 @@ async def _execute_payment(
     app_id: int,
     api_key_id: int | None,
     debug: bool = False,
+    app_name: str = "",
 ) -> PayResponse | PayResponseDebug:
     """Logique partagée d'exécution de paiement (réutilisée par /pay ET /admin/apps/{app_id}/pay).
 
@@ -212,6 +213,7 @@ async def _execute_payment(
         email=req.email,
         sender_name=req.sender_name,
         callback_url=req.callback_url,
+        raison=f"MobileWallet-{app_name}" if app_name else "MobileWallet",
     )
 
     await _guard_duplicate(req)
@@ -366,7 +368,8 @@ async def pay(
     - **browser** : flux IA complet ; déduit et persiste le template curl.
     - **replay** : rejoue via le template stocké (409 si absent).
     """
-    return await _execute_payment(req, ctx.app_id, ctx.api_key_id, debug)
+    return await _execute_payment(req, ctx.app_id, ctx.api_key_id, debug,
+                                  app_name=ctx.app_name)
 
 
 async def _guard_duplicate(req: PayRequest) -> None:

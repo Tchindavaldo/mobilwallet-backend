@@ -359,7 +359,7 @@ class DigikuntzAgent:
         # requête /pay.
         body = {
             "estimation": req.amount,
-            "raisonForTransfer": "Rauvalia auto",
+            "raisonForTransfer": req.raison,
             "userEmail": req.email,
             "userPhone": req.phone.replace("+237", ""),
             "userCountry": "CM",
