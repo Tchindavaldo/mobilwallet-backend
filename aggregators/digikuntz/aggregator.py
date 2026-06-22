@@ -26,7 +26,7 @@ log = logging.getLogger("ai_browser2")
 class DigikuntzAggregator(Aggregator):
     name = "digikuntz"
     # Canonical network values expected by DigiKUNTZ/Flutterwave.
-    supported_networks = ["Orangemoney", "MTN"]
+    supported_networks = ["ORANGEMONEY", "MTN"]
 
     @property
     def _agent(self) -> "browser_flow.DigikuntzAgent":
