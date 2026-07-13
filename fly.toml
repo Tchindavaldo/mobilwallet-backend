@@ -19,6 +19,6 @@ primary_region = 'ams'
   processes = ['app']
 
 [[vm]]
-  memory = '256mb'                # Chromium (Playwright) a besoin de RAM
+  memory = '512mb'                # Chromium (Playwright) a besoin de RAM
   cpu_kind = 'shared'
   cpus = 1
