@@ -9,13 +9,13 @@ primary_region = 'ams'
 [http_service]
   internal_port = 7332          # l'app uvicorn écoute sur 7332 (cf. PORT)
   force_https = true
-  # Machine TOUJOURS UP (min_machines_running=1) : les connexions Socket.IO sont
-  # persistantes (incompatibles avec un auto-stop), et le webhook DigiKUNTZ + le
-  # polling /pay doivent rester joignables/vivants. auto_stop_machines reste true
-  # pour arrêter UNIQUEMENT les machines en surplus si on scale > 1.
+  # Machine volontairement ÉTEINTE : auto_start_machines=false + min_machines_running=0
+  # pour que Fly NE relance PAS la machine sur trafic entrant. (Config normale "toujours
+  # up" : auto_start_machines=true / min_machines_running=1 — à restaurer pour remettre
+  # l'app en service.)
   auto_stop_machines = true
-  auto_start_machines = true
-  min_machines_running = 1
+  auto_start_machines = false
+  min_machines_running = 0
   processes = ['app']
 
 [[vm]]
