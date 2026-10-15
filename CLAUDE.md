@@ -37,6 +37,37 @@ L'architecture doit rester **propre, moderne, modulaire**. Règles non négociab
 - Toute nouvelle route/évolution s'ajoute **dans le module de son domaine**, pas
   dans un fichier déjà gros.
 
+### Objectif : un code qu'un humain reprend à la main sans se perdre
+
+Le critère final : si l'utilisateur reprend le code **manuellement**, il doit
+trouver chaque chose là où il s'attend à la trouver, comprendre chaque fichier
+d'une seule lecture, et ne jamais tomber sur un fichier « fourre-tout ». Avant de
+clore un travail, relis ta structure avec ce regard-là. Règles concrètes :
+
+- **Ranger par domaine, puis par rôle.** Un dossier = un domaine (un agrégateur,
+  le moteur IA, la compta…). Dans un dossier, un fichier par rôle (client HTTP,
+  flux payin, flux payout, polling, mapping des statuts…). Modèle à suivre pour
+  un agrégateur : `aggregators/<nom>/` avec `client.py` (appels HTTP),
+  `aggregator.py` (classe + enregistrement), `payout_flow.py`, etc.
+- **Fonctions courtes et à rôle unique** : viser < 50 lignes. Une fonction qui
+  fait « initier + interpréter + persister + notifier » se découpe en étapes
+  nommées. Pas d'imbrication profonde : extraire des helpers.
+- **Noms explicites** (fichiers, fonctions, variables) : on doit deviner le
+  contenu au nom. Pas de `utils.py`/`helpers.py`/`misc.py` génériques : un
+  helper vit dans le module de son domaine (ex. `payments_common.py`).
+- **Pas de duplication** : si deux modules ont besoin du même mécanisme, il va
+  dans un module partagé (ex. `core/verdict_registry.py`), pas copié-collé.
+- **Pas de couplage croisé entre agrégateurs** : `aggregators/a/` n'importe
+  jamais `aggregators/b/`. Ce qui est commun remonte dans `core/`.
+- **Chaque fichier commence par une docstring** qui dit en 2-5 lignes son rôle
+  et sa place dans le flux. Commentaires en français, sur le « pourquoi ».
+- **Pas de code mort** ni de fichier orphelin : on supprime ce qui ne sert plus.
+- **Refactor au passage** : si tu touches un fichier mal découpé ou mal rangé,
+  tu le remets d'aplomb dans le même travail (et tu le signales), au même titre
+  que la limite de 500 lignes.
+- **`ARCHITECTURE.md` reflète la structure réelle** : tout nouveau fichier y
+  est listé avec une ligne de rôle.
+
 ## Convention de branches Git (OBLIGATOIRE)
 
 > ⚠️ Cette section parle **exclusivement de branches Git** (`git checkout -b ...`).
