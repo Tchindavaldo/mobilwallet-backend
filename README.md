@@ -304,6 +304,9 @@ téléphone). Utiliser un petit montant et un numéro contrôlé.
   final vient du **polling statut DigiKUNTZ** (`GET {base}/transaction?transactionId=`),
   jusqu'au verdict terminal (sans timeout : l'opérateur finit toujours par trancher ; un échec après USSD → `cancelled`).
   *(Webhook serveur possible une fois le backend déployé — cf. `todo/webhook-digikuntz.md`.)*
+  *pawaPay (agrégateur à venir) : callback `POST /webhook/pawapay` (dépôts + payouts ;
+  remboursements tracés seulement). URL à déclarer dans le dashboard pawaPay :
+  `https://mobilwallet-backend.fly.dev/webhook/pawapay`.*
 - Statuts finaux : `successful`, `failed` (refus / solde insuffisant),
   `cancelled` (refus USSD ou non-validation, par l'utilisateur ou l'opérateur),
   `pending`. Pannes amont → **503** `network_unavailable` (API) ou

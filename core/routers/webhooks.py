@@ -1,4 +1,8 @@
-"""Webhook entrant DigiKUNTZ (callback statut serveur-à-serveur)."""
+"""Webhooks entrants des agrégateurs (callbacks statut serveur-à-serveur).
+
+- POST /webhook/digikuntz
+- POST /webhook/pawapay   (dépôts, payouts et remboursements pawaPay)
+"""
 
 import logging
 
@@ -32,44 +36,79 @@ async def digikuntz_webhook(payload: dict):
     log.info("🪝 Webhook DigiKUNTZ: id=%s status=%s -> %s", provider_id, raw, internal)
 
     if provider_id and internal in ("successful", "failed", "cancelled"):
-        # Débloque le polling en cours pour cette transaction (registre mémoire).
         status_poll.registry.deliver(
             provider_id, {"status": internal, "raw": raw, "data": payload.get("data")})
-        # MAJ la ligne BD si on la retrouve (settle redondant mais idempotent).
-        row = await db.get_transaction_by_provider_id(provider_id)
-        if row:
-            await db.update_status_by_provider_id(provider_id, internal,
-                                                  message=f"Webhook DigiKUNTZ: {raw}")
-            # Comptabilité (idempotente, via ledger) :
-            #   - un PAYIN réussi crédite le solde de l'app ;
-            #   - un PAYOUT échoué/annulé rembourse le débit réservé à l'initiation.
-            # (Un payout réussi ne fait rien : le débit reste.)
-            row_type = (row.get("type") or "payin").lower()
-            app_id = row.get("app_id")
-            if app_id and row.get("id"):
-                if row_type == "payin" and internal == "successful":
-                    # Split : commission MW (défaut agrégateur ou surcharge app) → plateforme, reste → app.
-                    # Les frais DigiKUNTZ sont pris directement sur le client (hors comptabilité).
-                    agg_config = await db.get_aggregator_config(row.get("aggregator", ""))
-                    app_cfg = await db.get_app_commission(app_id)
-                    breakdown = compute_fees(row.get("amount", 0), agg_config, app_cfg)
-                    await db.credit_app(app_id, breakdown.app_amount,
-                                        transaction_id=row["id"],
-                                        reason="payin_successful")
-                    if breakdown.platform_amount > 0:
-                        await db.credit_platform(breakdown.platform_amount,
-                                                  transaction_id=row["id"],
-                                                  reason="payin_fees")
-                elif row_type == "payout" and internal in ("failed", "cancelled"):
-                    await db.credit_app(app_id, row.get("amount", 0),
-                                        transaction_id=row["id"],
-                                        reason="payout_refund")
-            # Notifie l'app du verdict (idempotent : si le polling a déjà notifié
-            # ce (tx, event), la réservation l'empêche d'envoyer en double).
-            notify_settled(
-                row["id"], internal, transaction_ref=row.get("transaction_ref", ""),
-                amount=row.get("amount", 0), network=row.get("network", ""),
-                phone=row.get("phone", ""), end_user_ref=row.get("end_user_ref"),
-                provider_transaction_id=provider_id,
-            )
+        await _settle(provider_id, internal, f"Webhook DigiKUNTZ: {raw}")
+    return {"received": True}
+
+
+async def _settle(provider_id: str, internal: str, message: str) -> None:
+    """MAJ BD + comptabilité + notification client pour un verdict terminal
+    reçu d'un agrégateur. Commun à tous les webhooks ; idempotent."""
+    # MAJ la ligne BD si on la retrouve (settle redondant mais idempotent).
+    row = await db.get_transaction_by_provider_id(provider_id)
+    if row:
+        await db.update_status_by_provider_id(provider_id, internal,
+                                              message=message)
+        # Comptabilité (idempotente, via ledger) :
+        #   - un PAYIN réussi crédite le solde de l'app ;
+        #   - un PAYOUT échoué/annulé rembourse le débit réservé à l'initiation.
+        # (Un payout réussi ne fait rien : le débit reste.)
+        row_type = (row.get("type") or "payin").lower()
+        app_id = row.get("app_id")
+        if app_id and row.get("id"):
+            if row_type == "payin" and internal == "successful":
+                # Split : commission MW (défaut agrégateur ou surcharge app) → plateforme, reste → app.
+                # Les frais DigiKUNTZ sont pris directement sur le client (hors comptabilité).
+                agg_config = await db.get_aggregator_config(row.get("aggregator", ""))
+                app_cfg = await db.get_app_commission(app_id)
+                breakdown = compute_fees(row.get("amount", 0), agg_config, app_cfg)
+                await db.credit_app(app_id, breakdown.app_amount,
+                                    transaction_id=row["id"],
+                                    reason="payin_successful")
+                if breakdown.platform_amount > 0:
+                    await db.credit_platform(breakdown.platform_amount,
+                                              transaction_id=row["id"],
+                                              reason="payin_fees")
+            elif row_type == "payout" and internal in ("failed", "cancelled"):
+                await db.credit_app(app_id, row.get("amount", 0),
+                                    transaction_id=row["id"],
+                                    reason="payout_refund")
+        # Notifie l'app du verdict (idempotent : si le polling a déjà notifié
+        # ce (tx, event), la réservation l'empêche d'envoyer en double).
+        notify_settled(
+            row["id"], internal, transaction_ref=row.get("transaction_ref", ""),
+            amount=row.get("amount", 0), network=row.get("network", ""),
+            phone=row.get("phone", ""), end_user_ref=row.get("end_user_ref"),
+            provider_transaction_id=provider_id,
+        )
+
+
+# pawaPay : statut terminal -> statut interne. ACCEPTED/ENQUEUED/SUBMITTED etc.
+# sont intermédiaires (ignorés). Un dépôt REMBOURSÉ n'est pas un verdict de payin.
+PAWAPAY_STATUS_MAP = {"COMPLETED": "successful", "FAILED": "failed"}
+
+
+@router.post("/webhook/pawapay", tags=["system"],
+             summary="Webhook pawaPay (callback statut)", include_in_schema=False)
+async def pawapay_webhook(payload: dict):
+    """Callback serveur pawaPay : POST {depositId|payoutId|refundId, status, ...}.
+
+    Une seule URL pour les trois types de callback (à déclarer dans le
+    dashboard pawaPay). On identifie la transaction par l'id pawaPay
+    (= provider_transaction_id) et on applique le même règlement que DigiKUNTZ.
+    Répond toujours 200 pour éviter les retries inutiles.
+    TODO : vérifier la signature RFC-9421 quand les callbacks signés seront activés.
+    """
+    if "refundId" in payload:
+        # Remboursement : pas encore géré par la comptabilité -> trace seulement.
+        log.info("🪝 Webhook pawaPay refund: id=%s status=%s",
+                 payload.get("refundId"), payload.get("status"))
+        return {"received": True}
+    provider_id = str(payload.get("depositId") or payload.get("payoutId") or "")
+    raw = str(payload.get("status", ""))
+    internal = PAWAPAY_STATUS_MAP.get(raw.upper(), raw.lower() or "unknown")
+    log.info("🪝 Webhook pawaPay: id=%s status=%s -> %s", provider_id, raw, internal)
+    if provider_id and internal in ("successful", "failed"):
+        await _settle(provider_id, internal, f"Webhook pawaPay: {raw}")
     return {"received": True}

@@ -42,7 +42,8 @@ ai_browser2/
 │   │   │                         initiate_payout, poll/webhook -> verdict, REMBOURSE si échec.
 │   │   ├── transactions.py       /transactions*, /status/{ref}, /cancel, /balance (scopés à l'app).
 │   │   ├── templates.py          /aggregators/{name}/template (consulter/poser le replay).
-│   │   ├── webhooks.py           /webhook/digikuntz (callback statut entrant).
+│   │   ├── webhooks.py           /webhook/digikuntz + /webhook/pawapay (callbacks statut entrants,
+│   │   │                         règlement commun `_settle` : BD + ledger + notification).
 │   │   ├── auth.py               /signup,/login,/refresh,/logout : compte dev (self-service).
 │   │   ├── projects.py           /apps,/apps/{id}/keys : le dev gère SES apps/clés (require_dev).
 │   │   ├── admin.py              /admin/* : supervision developers/apps/clés + /admin/apps/{app_id}/pay
