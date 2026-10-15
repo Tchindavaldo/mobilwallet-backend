@@ -1,0 +1,41 @@
+# Allume la machine Fly de façon PERMANENTE (jamais d'arrêt automatique).
+# Lancement : onglet Actions > « Fly — allumer (permanent) » > Run workflow.
+# Secret requis : FLY_API_TOKEN (fly tokens create deploy -a mobilwallet-backend).
+name: Fly — allumer (permanent)
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Redéployer aussi le code de la branche choisie avant d'allumer"
+        type: boolean
+        default: false
+
+concurrency: fly-machine-control
+
+env:
+  FLY_APP: mobilwallet-backend
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+jobs:
+  on:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Déployer (optionnel)
+        if: ${{ inputs.deploy }}
+        run: flyctl deploy --remote-only -a "$FLY_APP"
+
+      - name: Rendre chaque machine permanente puis la démarrer
+        run: |
+          ids=$(flyctl machine list -a "$FLY_APP" --json | jq -r '.[].id')
+          if [ -z "$ids" ]; then echo "Aucune machine : lancer avec deploy=true." >&2; exit 1; fi
+          for id in $ids; do
+            flyctl machine update "$id" -a "$FLY_APP" --autostop=off --autostart=true --yes
+            flyctl machine start "$id" -a "$FLY_APP" || true
+          done
+
+      - name: État final
+        run: flyctl machine list -a "$FLY_APP"

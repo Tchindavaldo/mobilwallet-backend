@@ -1,0 +1,30 @@
+# Éteint COMPLÈTEMENT la machine Fly : arrêt + plus de redémarrage sur trafic
+# entrant (les requêtes reçoivent une erreur tant qu'elle est éteinte).
+# Lancement : onglet Actions > « Fly — éteindre » > Run workflow.
+# Secret requis : FLY_API_TOKEN.
+name: Fly — éteindre
+
+on:
+  workflow_dispatch:
+
+concurrency: fly-machine-control
+
+env:
+  FLY_APP: mobilwallet-backend
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+jobs:
+  off:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Désactiver le redémarrage auto puis arrêter chaque machine
+        run: |
+          for id in $(flyctl machine list -a "$FLY_APP" --json | jq -r '.[].id'); do
+            flyctl machine update "$id" -a "$FLY_APP" --autostart=false --autostop=stop --yes
+            flyctl machine stop "$id" -a "$FLY_APP" || true
+          done
+
+      - name: État final
+        run: flyctl machine list -a "$FLY_APP"

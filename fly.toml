@@ -9,13 +9,12 @@ primary_region = 'ams'
 [http_service]
   internal_port = 7332          # l'app uvicorn écoute sur 7332 (cf. PORT)
   force_https = true
-  # Machine volontairement ÉTEINTE : auto_start_machines=false + min_machines_running=0
-  # pour que Fly NE relance PAS la machine sur trafic entrant. (Config normale "toujours
-  # up" : auto_start_machines=true / min_machines_running=1 — à restaurer pour remettre
-  # l'app en service.)
-  auto_stop_machines = true
-  auto_start_machines = false
-  min_machines_running = 0
+  # Machine TOUJOURS ALLUMÉE : jamais d'arrêt auto, au moins 1 machine en marche.
+  # Pour l'éteindre/la rallumer sans redéployer : actions GitHub « Fly — allumer »
+  # et « Fly — éteindre » (.github/workflows/fly-on.yml / fly-off.yml).
+  auto_stop_machines = 'off'
+  auto_start_machines = true
+  min_machines_running = 1
   processes = ['app']
 
 [[vm]]

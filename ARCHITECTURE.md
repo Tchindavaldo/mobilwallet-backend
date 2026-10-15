@@ -158,6 +158,9 @@ ai_browser2/
 │       └── 022_aggregator_pawapay.sql  Ligne 'pawapay' (commission MW à 0, à ajuster).
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
+├── fly.toml                      Déploiement Fly.io : machine toujours allumée (auto_stop off).
+├── .github/workflows/            Actions manuelles : fly-on.yml (allumer, permanent) /
+│                                 fly-off.yml (éteindre complètement). Secret FLY_API_TOKEN.
 ├── scripts/dump_openapi.py       Dump du schéma OpenAPI.
 ├── todo/                         Chantiers planifiés (migration vue admin, fallback poll DigiKUNTZ).
 ├── README.md                     Doc d'usage (install, endpoints, modes, persistance).
