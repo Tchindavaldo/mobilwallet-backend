@@ -50,6 +50,15 @@ class DigikuntzConfig:
 
 
 @dataclass
+class PawapayConfig:
+    # Sandbox par défaut ; production = https://api.pawapay.io (token différent).
+    base: str = field(default_factory=lambda: _env("PAWAPAY_BASE", "https://api.sandbox.pawapay.io"))
+    api_token: str = field(default_factory=lambda: _env("PAWAPAY_API_TOKEN"))
+    country: str = field(default_factory=lambda: _env("PAWAPAY_COUNTRY", "CMR"))
+    currency: str = field(default_factory=lambda: _env("PAWAPAY_CURRENCY", "XAF"))
+
+
+@dataclass
 class Settings:
     # LLM
     deepseek_api_key: str = field(default_factory=lambda: _env("DEEPSEEK_API_KEY"))
@@ -114,6 +123,7 @@ class Settings:
 
     # Per-aggregator config
     digikuntz: DigikuntzConfig = field(default_factory=DigikuntzConfig)
+    pawapay: PawapayConfig = field(default_factory=PawapayConfig)
 
     # Mock mode : simule les paiements au lieu d'appeler DigiKUNTZ (utile quand DigiKUNTZ est down)
     # MOCK_PAYMENTS=true active le mode mock pour /pay

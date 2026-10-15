@@ -247,6 +247,18 @@ async def admin_global_balance():
     return bal
 
 
+@router.get("/pawapay/balance", summary="Soldes des wallets pawaPay (trésorerie)")
+async def admin_pawapay_balance():
+    """Soldes RÉELS des wallets pawaPay (GET /v2/wallet-balances). Admin uniquement.
+    503 si pawaPay injoignable."""
+    from aggregators.pawapay import client
+    balances = await client.fetch_balances()
+    if balances is None:
+        raise HTTPException(503, {"error": "pawapay_unavailable",
+                                  "message": "Impossible de récupérer le solde pawaPay."})
+    return {"balances": balances}
+
+
 @router.get("/reconciliation", summary="Réconciliation Σ soldes apps + plateforme vs solde global DigiKUNTZ")
 async def admin_reconciliation():
     """Contrôle l'invariant comptable : Σ soldes apps + solde plateforme doit égaler

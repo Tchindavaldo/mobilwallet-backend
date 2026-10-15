@@ -84,22 +84,18 @@ async def _settle(provider_id: str, internal: str, message: str) -> None:
         )
 
 
-# pawaPay : statut terminal -> statut interne. ACCEPTED/ENQUEUED/SUBMITTED etc.
-# sont intermédiaires (ignorés). Un dépôt REMBOURSÉ n'est pas un verdict de payin.
-PAWAPAY_STATUS_MAP = {"COMPLETED": "successful", "FAILED": "failed"}
-
-
 @router.post("/webhook/pawapay", tags=["system"],
              summary="Webhook pawaPay (callback statut)", include_in_schema=False)
 async def pawapay_webhook(payload: dict):
     """Callback serveur pawaPay : POST {depositId|payoutId|refundId, status, ...}.
 
-    Une seule URL pour les trois types de callback (à déclarer dans le
-    dashboard pawaPay). On identifie la transaction par l'id pawaPay
-    (= provider_transaction_id) et on applique le même règlement que DigiKUNTZ.
+    Une seule URL pour tous les types (déclarée dans le dashboard pawaPay). On
+    identifie la transaction par l'id pawaPay (= provider_transaction_id), on
+    réveille le polling en cours puis on applique le règlement commun.
     Répond toujours 200 pour éviter les retries inutiles.
-    TODO : vérifier la signature RFC-9421 quand les callbacks signés seront activés.
+    TODO : vérifier la signature (RFC-9421) si les callbacks signés sont activés.
     """
+    from aggregators.pawapay import client
     if "refundId" in payload:
         # Remboursement : pas encore géré par la comptabilité -> trace seulement.
         log.info("🪝 Webhook pawaPay refund: id=%s status=%s",
@@ -107,8 +103,11 @@ async def pawapay_webhook(payload: dict):
         return {"received": True}
     provider_id = str(payload.get("depositId") or payload.get("payoutId") or "")
     raw = str(payload.get("status", ""))
-    internal = PAWAPAY_STATUS_MAP.get(raw.upper(), raw.lower() or "unknown")
+    failure = payload.get("failureReason")
+    internal = client.map_status(raw, failure)
     log.info("🪝 Webhook pawaPay: id=%s status=%s -> %s", provider_id, raw, internal)
-    if provider_id and internal in ("successful", "failed"):
+    if provider_id and internal in client.TERMINAL:
+        client.registry.deliver(
+            provider_id, {"status": internal, "raw": raw, "failure": failure})
         await _settle(provider_id, internal, f"Webhook pawaPay: {raw}")
     return {"received": True}

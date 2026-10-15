@@ -74,7 +74,7 @@ cp .env.example .env                 # puis remplir les valeurs
 > Le hot-reload (`RELOAD=1`) surveille le **code** (`.py`), pas le `.env`. Après avoir
 > modifié `.env` (ex: ajout Supabase), il faut **couper et relancer** le serveur.
 
-Variables d'environnement (cf. `.env.example`) : `DIGIKUNTZ_*`, `FLW_*`, `DEEPSEEK_API_KEY`,
+Variables d'environnement (cf. `.env.example`) : `DIGIKUNTZ_*`, `PAWAPAY_*` (base sandbox/prod, token API), `FLW_*`, `DEEPSEEK_API_KEY`,
 `SUPABASE_URL`/`SUPABASE_KEY`, `HEADLESS` (1 en prod), `PORT`, `HOST`,
 `DIGIKUNTZ_USE_CALLBACK` (transmettre un `callbackUrl` à DigiKUNTZ, défaut `false`),
 `MOCK_PAYMENTS` (mode mock, cf. plus bas).
@@ -123,6 +123,7 @@ FastAPI génère automatiquement la doc OpenAPI :
 | GET | `/admin/apps/{id}/balance` | solde d'une app |
 | POST | `/admin/ledger/backfill` | amorcer les soldes depuis les payins réussis |
 | GET | `/admin/digikuntz/balance` | solde réel du compte global DigiKUNTZ |
+| GET | `/admin/pawapay/balance` | soldes réels des wallets pawaPay |
 | GET | `/admin/reconciliation` | Σ soldes apps + plateforme vs solde global |
 | GET | `/admin/platform/balance` | solde plateforme (argent propre MobileWallet) |
 | POST | `/admin/platform/credit` | recharger le solde plateforme |
@@ -286,6 +287,18 @@ curl -X POST localhost:7332/aggregators/digikuntz/template \
 
 Aucune modification de `core/` n'est nécessaire — le navigateur IA générique et le routing
 fonctionnent par contrat.
+
+**Agrégateur « API directe »** (ex. `pawapay`) : poser `direct_api = True` et implémenter
+`pay_direct(req, tx_id)` (retourne `ussd_sent` + `poll_after_close`) et `finalize_after_close`.
+`/pay` saute alors navigateur et replay (le champ `mode` est ignoré). Pour le payout, exposer un
+`payout_flow` (même interface que DigiKUNTZ) et l'ajouter à `_PAYOUT_FLOWS` dans `core/routers/payout.py`.
+
+### pawaPay
+
+`aggregator: "pawapay"` sur `/pay` et `/payout` (réseaux `MTN` / `Orangemoney`, payout
+`MTN` / `ORANGEMONEY`). Statut final via callback `POST /webhook/pawapay` (une seule URL
+pour Checkouts/Deposits/Payouts/Refunds dans le dashboard) ou polling `GET /v2/{deposits|payouts}/{id}`.
+Config : `PAWAPAY_BASE`, `PAWAPAY_API_TOKEN`, `PAWAPAY_COUNTRY` (CMR), `PAWAPAY_CURRENCY` (XAF).
 
 ---
 

@@ -33,6 +33,19 @@ router = APIRouter()
 # quelles). Différent du payin (qui tolère 'orange' -> 'Orangemoney').
 _PAYOUT_BANK_CODES = ("ORANGEMONEY", "MTN")
 
+# Agrégateurs supportant le payout -> module exposant initiate_payout /
+# poll_payout_status / friendly_msg / PayoutUpstreamError (même interface).
+_PAYOUT_FLOWS = {
+    "digikuntz": "aggregators.digikuntz.payout_flow",
+    "pawapay": "aggregators.pawapay.payout_flow",
+}
+
+
+def _flow(aggregator: str):
+    """Module payout_flow de l'agrégateur (import paresseux)."""
+    import importlib
+    return importlib.import_module(_PAYOUT_FLOWS[aggregator])
+
 
 def _validate_payout_aggregator_and_network(req: PayoutRequest) -> None:
     """Valide l'agrégateur et exige un account_bank_code STRICT (ORANGEMONEY|MTN),
@@ -44,7 +57,7 @@ def _validate_payout_aggregator_and_network(req: PayoutRequest) -> None:
              "message": f"Agrégateur '{req.aggregator}' inconnu.",
              "supported_aggregators": registry.names()},
         )
-    if req.aggregator != "digikuntz":
+    if req.aggregator not in _PAYOUT_FLOWS:
         raise HTTPException(
             400,
             {"error": "payout_unsupported",
@@ -117,7 +130,7 @@ async def _execute_payout(
     balance_after = reserved.get("balance_after")
 
     # 2) Initiation du virement chez DigiKUNTZ.
-    from aggregators.digikuntz import payout_flow
+    payout_flow = _flow(req.aggregator)
     try:
         init = await payout_flow.initiate_payout(req)
     except payout_flow.PayoutUpstreamError as e:
@@ -193,7 +206,7 @@ async def execute_platform_payout(
     await db.debit_platform(req.amount, transaction_id=tx_id, currency=req.currency)
     balance_after = await db.get_platform_balance()
 
-    from aggregators.digikuntz import payout_flow
+    payout_flow = _flow(req.aggregator)
     try:
         init = await payout_flow.initiate_payout(req)
     except payout_flow.PayoutUpstreamError as e:
@@ -235,7 +248,7 @@ async def execute_platform_payout(
 async def _finalize_platform_payout_bg(req, tx_id, provider_id, transaction_ref):
     """Phase 2 du payout plateforme : poll -> settle -> rembourse plateforme si échec
     -> notifie."""
-    from aggregators.digikuntz import payout_flow
+    payout_flow = _flow(req.aggregator)
     try:
         verdict = await payout_flow.poll_payout_status(provider_id)
         status = verdict["status"]
@@ -268,7 +281,7 @@ async def _platform_payout_mock(req, debug):
 
 async def _mock_finalize_platform(req, tx_id, scenario, provider_id, transaction_ref):
     import random
-    from aggregators.digikuntz import payout_flow
+    payout_flow = _flow(req.aggregator)
     await asyncio.sleep(random.randint(1, 3))
     status = "successful" if scenario == "success" else "failed"
     if status != "successful":
@@ -285,7 +298,7 @@ async def _mock_finalize_platform(req, tx_id, scenario, provider_id, transaction
 async def _finalize_payout_bg(req, tx_id, app_id, provider_id, transaction_ref):
     """Phase 2 (hors requête) : poll le verdict -> settle BD -> rembourse si échec
     -> notifie le client (webhook + Socket.IO)."""
-    from aggregators.digikuntz import payout_flow
+    payout_flow = _flow(req.aggregator)
     try:
         verdict = await payout_flow.poll_payout_status(provider_id)
         status = verdict["status"]
@@ -330,7 +343,7 @@ async def _execute_payout_mock(req, app_id, api_key_id, debug):
 
 async def _mock_finalize_payout(req, tx_id, app_id, scenario, provider_id, transaction_ref):
     import random
-    from aggregators.digikuntz import payout_flow
+    payout_flow = _flow(req.aggregator)
     await asyncio.sleep(random.randint(1, 3))
     status = "successful" if scenario == "success" else "failed"
     if status != "successful":

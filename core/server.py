@@ -19,6 +19,7 @@ from fastapi import FastAPI
 
 # Importer le package aggregators enregistre tous les agrégateurs dans le registre.
 import aggregators.digikuntz  # noqa: F401
+import aggregators.pawapay  # noqa: F401
 from core import runtime
 from core.browser import BrowserController
 from core.config import settings

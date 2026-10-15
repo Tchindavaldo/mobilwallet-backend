@@ -34,7 +34,9 @@ ai_browser2/
 │   │                             transverses (seconds_since, fmt_duration).
 │   ├── routers/                  UN APIRouter PAR DOMAINE (logique des endpoints) :
 │   │   ├── system.py             /health, /aggregators, /config/max-tabs.
-│   │   ├── payments.py           /pay (dispatch, garde anti-doublon, settle, vues client/debug).
+│   │   ├── payments.py           /pay (dispatch, mock, chemin navigateur/replay, chemin « API
+│   │   │                         directe » `_execute_direct` pour les agrégateurs direct_api).
+│   │   ├── payments_common.py    Helpers /pay : garde anti-doublon, _settle, split payin, rendu.
 │   │   │                         Court-circuité par le mode mock (settings.mock_payments).
 │   │   │                         Crédite le solde de l'app (app_ledger) au succès payin.
 │   │   ├── payout.py             /payout (virement sortant) : garde anti-doublon par
@@ -48,7 +50,8 @@ ai_browser2/
 │   │   ├── projects.py           /apps,/apps/{id}/keys : le dev gère SES apps/clés (require_dev).
 │   │   ├── admin.py              /admin/* : supervision developers/apps/clés + /admin/apps/{app_id}/pay
 │   │   │                         + /admin/apps/{app_id}/payout + .../balance + /ledger/backfill
-│   │   │                         + /digikuntz/balance (solde global) + /reconciliation (require_admin).
+│   │   │                         + /digikuntz/balance (solde global) + /pawapay/balance
+│   │   │                         + /reconciliation (require_admin).
 │   │   └── dev.py                /drive, /test-llm.
 │   ├── schemas/                  Modèles Pydantic par domaine (payments, system, templates, dev,
 │   │                             admin, auth, projects).
@@ -66,6 +69,8 @@ ai_browser2/
 │   ├── base.py                   Contrat `Aggregator` (ABC) + dataclasses PaymentRequest /
 │   │                             PaymentResult (porte error_code, curl_template, errors…) / CurlTemplate.
 │   ├── registry.py               Registre nom -> instance d'agrégateur (register / get / names).
+│   ├── verdict_registry.py       Boîte aux lettres webhook⇄polling par id provider (une instance
+│   │                             par agrégateur : le premier à voir le terminal réveille l'autre).
 │   ├── mock_aggregator.py        Mode mock (MOCK_PAYMENTS=true) : simule un paiement sans appeler
 │   │                             DigiKUNTZ (ussd_sent immédiat puis successful/cancelled après délai).
 │   │                             Socket.IO + webhook se déclenchent normalement. Utile si DigiKUNTZ down.
@@ -114,6 +119,15 @@ ai_browser2/
 │       └── payout_flow.py        Payout (retrait) : initiate_payout (POST {base}/payout) +
 │                                 poll_payout_status (GET {base}/transaction, mapping payout_*,
 │                                 registre webhook⇄polling). Aucun navigateur/LLM/Flutterwave.
+│   └── pawapay/                  Agrégateur « API directe » (Merchant API v2, Bearer token) :
+│       ├── client.py             HTTP pawaPay : initiate_deposit/payout, fetch_status, soldes,
+│       │                         mapping statuts (COMPLETED/FAILED/… -> interne), MSISDN 237…,
+│       │                         providers MTN_MOMO_CMR / ORANGE_CMR, poll_until_final (sans
+│       │                         timeout, écoute le webhook via son VerdictRegistry).
+│       ├── aggregator.py         PawapayAggregator (direct_api=True) : pay_direct -> ussd_sent +
+│       │                         poll_after_close ; finalize_after_close pose le statut final.
+│       │                         Hooks navigateur/replay du contrat = NotImplementedError.
+│       └── payout_flow.py        Payout pawaPay, même interface que digikuntz.payout_flow.
 │
 ├── schema/
 │   ├── supabase.sql              Schéma de base : transactions, curl_templates.
@@ -141,6 +155,7 @@ ai_browser2/
 │       ├── 018_platform_ledger.sql  Solde PLATEFORME (argent propre MobileWallet) + vue platform_balance.
 │       └── 019_aggregators.sql      Config des taux par agrégateur : aggregator_fee_rate (5% DigiKUNTZ),
 │                                    mw_commission_type/value (percent|flat). Pré-rempli digikuntz 5%/5%.
+│       └── 022_aggregator_pawapay.sql  Ligne 'pawapay' (commission MW à 0, à ajuster).
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── scripts/dump_openapi.py       Dump du schéma OpenAPI.
@@ -272,7 +287,8 @@ C'est donc à **nous** de tenir le **solde de chaque app**.
 
 ## Points d'entrée de code utiles
 
-- Ajouter un agrégateur → `core/base.py` (l'ABC) + `aggregators/<nom>/`.
+- Ajouter un agrégateur → `core/base.py` (l'ABC) + `aggregators/<nom>/` (API pure : `direct_api = True`
+  + `pay_direct`/`finalize_after_close`, cf. pawaPay).
 - Toucher la décision de l'IA → `core/reasoning_loop.py` + `aggregators/*/browser_flow.py`
   (objectif + decide_browser_outcome). **Ne jamais y remettre de "code qui décide".**
 - Toucher la persistance → `core/db.py` (+ une migration dans `schema/migrations/`).

@@ -1885,6 +1885,53 @@
         }
       }
     },
+    "/admin/pawapay/balance": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Soldes des wallets pawaPay (trésorerie)",
+        "description": "Soldes RÉELS des wallets pawaPay (GET /v2/wallet-balances). Admin uniquement.\n503 si pawaPay injoignable.",
+        "operationId": "admin_pawapay_balance_admin_pawapay_balance_get",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/reconciliation": {
       "get": {
         "tags": [
