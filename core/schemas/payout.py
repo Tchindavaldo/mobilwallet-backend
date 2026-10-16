@@ -69,6 +69,8 @@ class PayoutResponse(BaseModel):
     message: str = Field("", description="Message clair pour l'utilisateur final.")
     transaction_id: str = Field("", description="Référence transaction de l'agrégateur.")
     code: int = Field(200, description="Code HTTP de la réponse (200 si OK).")
+    dev_message: str = Field("", description="Information technique pour VOUS (intégrateur), "
+                             "à ne pas afficher à l'utilisateur. Vide le plus souvent.")
 
 
 class PayoutResponseDebug(PayoutResponse):

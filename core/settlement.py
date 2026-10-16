@@ -71,14 +71,18 @@ async def refund_payout(row: dict) -> None:
 
 
 async def settle_verdict(provider_id: str, internal: str, message: str,
-                         settled_by: str = "webhook") -> None:
+                         settled_by: str = "webhook",
+                         error_signals: dict | None = None) -> None:
     """MAJ BD + comptabilité + notification client pour un verdict terminal
     d'agrégateur (webhook, ou vérification manuelle d'un payout). Idempotent."""
     row = await db.get_transaction_by_provider_id(provider_id)
     if not row:
         return
+    # message = texte UTILISATEUR ; error_signals = détail technique (code
+    # agrégateur…) pour le dev, lisible via GET /status/{ref}.
     await db.update_status_by_provider_id(provider_id, internal, message=message,
-                                          settled_by=settled_by)
+                                          settled_by=settled_by,
+                                          error_signals=error_signals)
     # Comptabilité (idempotente, via ledger) : un PAYIN réussi crédite l'app ;
     # un PAYOUT échoué/annulé rembourse le débit réservé (réussi : le débit reste).
     row_type = (row.get("type") or "payin").lower()

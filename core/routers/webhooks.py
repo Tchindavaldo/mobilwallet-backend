@@ -79,6 +79,7 @@ async def pawapay_webhook(payload: dict):
             from aggregators.pawapay.aggregator import friendly_msg
             msg = friendly_msg(internal, failure, payload.get("provider") or
                                (payer or {}).get("provider"))
-        code = (failure or {}).get("failureCode")
-        await settlement.settle_verdict(provider_id, internal, f"{msg} ({code})" if code else msg)
+        signals = ({"failure_code": failure.get("failureCode"),
+                    "failure_message": failure.get("failureMessage")} if failure else None)
+        await settlement.settle_verdict(provider_id, internal, msg, error_signals=signals)
     return {"received": True}

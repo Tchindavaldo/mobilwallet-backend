@@ -24,13 +24,16 @@ _BLOCKING = ("CLOSED",)
 
 
 def delayed_message(network: str) -> str:
-    """Avertissement d'un payout accepté alors que l'opérateur est DELAYED."""
+    """Message UTILISATEUR d'un payout accepté alors que l'opérateur est DELAYED."""
     other = "Orange Money" if (network or "").upper().startswith("MTN") else "MTN"
     return ("Virement accepté mais mis en file d'attente : l'opérateur a un problème "
             "temporaire. Si vous le laissez, il restera en attente et sera envoyé "
             "automatiquement dès le rétablissement de l'opérateur, ce qui peut prendre "
-            "du temps. Sinon, vous pouvez l'annuler (POST /payout/{ref}/cancel) "
-            f"et réessayer sur un autre réseau ({other}).")
+            f"du temps. Sinon, vous pouvez l'annuler et réessayer sur un autre réseau ({other}).")
+
+
+DELAYED_DEV_MESSAGE = ("Opérateur DELAYED chez l'agrégateur : payout mis en file (ENQUEUED). "
+                       "Annulable tant qu'il est en file via POST /payout/{ref}/cancel.")
 
 
 def _module(aggregator: str):

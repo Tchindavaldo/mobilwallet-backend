@@ -3654,6 +3654,12 @@
             "title": "Code",
             "description": "Code HTTP de la réponse (200 si OK).",
             "default": 200
+          },
+          "dev_message": {
+            "type": "string",
+            "title": "Dev Message",
+            "description": "Information technique pour VOUS (intégrateur), à ne pas afficher à l'utilisateur. Vide le plus souvent.",
+            "default": ""
           }
         },
         "type": "object",

@@ -109,6 +109,7 @@ async def _execute_payout(
     resp = await _run_payout(req, app_id, api_key_id, debug)
     if op_status == "DELAYED" and isinstance(resp, PayoutResponse) and resp.status == "pending":
         resp.message = availability.delayed_message(req.account_bank_code)
+        resp.dev_message = availability.DELAYED_DEV_MESSAGE
     return resp
 
 

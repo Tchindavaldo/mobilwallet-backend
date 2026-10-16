@@ -234,7 +234,7 @@ class Database(LedgerMixin, DiagnosticsMixin, ConfigMixin):
 
     async def update_status_by_provider_id(
         self, provider_id: str, status: str, message: str = "",
-        settled_by: str = "webhook",
+        settled_by: str = "webhook", error_signals: dict | None = None,
     ) -> None:
         """MAJ le statut d'une transaction via son id provider (appelé par le
         webhook). Idempotent : n'écrase PAS un verdict terminal déjà posé."""
@@ -245,6 +245,8 @@ class Database(LedgerMixin, DiagnosticsMixin, ConfigMixin):
                  "settled_by": settled_by}
         if message:
             patch["message"] = message
+        if error_signals:
+            patch["error_signals"] = error_signals
         # Mêmes timestamps que le settle polling (update_transaction), pour que la
         # garde anti-doublon ait le bon point de départ quand le WEBHOOK gagne la
         # course. cancelled_at = moment du verdict ; validated_at = validation USSD.
