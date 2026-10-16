@@ -21,9 +21,14 @@ log = logging.getLogger("ai_browser2")
 # Doc pawaPay : CLOSED = demandes rejetées (dépôts, payouts, refunds) ;
 # DELAYED = payouts/refunds mis en file d'attente, exécutés plus tard (pas un refus).
 _BLOCKING = ("CLOSED",)
-DELAYED_MESSAGE = ("Virement accepté mais mis en file d'attente : l'opérateur a un "
-                   "problème temporaire. Il sera envoyé dès son rétablissement "
-                   "(annulable via POST /payout/{ref}/cancel).")
+
+
+def delayed_message(network: str) -> str:
+    """Avertissement d'un payout accepté alors que l'opérateur est DELAYED."""
+    other = "Orange Money" if (network or "").upper().startswith("MTN") else "MTN"
+    return ("Virement accepté mais mis en file d'attente : l'opérateur a un problème "
+            "temporaire. Il sera envoyé dès son rétablissement. Vous pouvez l'annuler "
+            f"(POST /payout/{{ref}}/cancel) ou réessayer sur un autre réseau ({other}).")
 
 
 def _module(aggregator: str):
