@@ -124,7 +124,7 @@ class Database(LedgerMixin):
     async def insert_pending(
         self, aggregator: str, mode: str, req: PaymentRequest,
         *, app_id: int | None = None, api_key_id: int | None = None,
-        end_user_ref: str | None = None,
+        end_user_ref: str | None = None, callback_url: str | None = None,
     ) -> int | None:
         """Insert the transaction as 'pending' at the start; return its id.
 
@@ -150,6 +150,8 @@ class Database(LedgerMixin):
             row["api_key_id"] = api_key_id
         if end_user_ref is not None:
             row["end_user_ref"] = end_user_ref
+        if callback_url:
+            row["callback_url"] = callback_url
 
         def _insert():
             res = self._client.table("transactions").insert(row).execute()
@@ -195,7 +197,8 @@ class Database(LedgerMixin):
             return None
 
     async def update_status_by_provider_id(
-        self, provider_id: str, status: str, message: str = ""
+        self, provider_id: str, status: str, message: str = "",
+        settled_by: str = "webhook",
     ) -> None:
         """MAJ le statut d'une transaction via son id provider (appelé par le
         webhook). Idempotent : n'écrase PAS un verdict terminal déjà posé."""
@@ -203,7 +206,7 @@ class Database(LedgerMixin):
             return
         _TERMINAL = {"successful", "failed", "cancelled"}
         patch = {"status": status, "success": status == "successful",
-                 "settled_by": "webhook"}
+                 "settled_by": settled_by}
         if message:
             patch["message"] = message
         # Mêmes timestamps que le settle polling (update_transaction), pour que la

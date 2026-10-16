@@ -307,3 +307,18 @@ async def poll_until_final(kind: str, provider_id: str) -> dict:
                 pass
     finally:
         registry.close(provider_id)
+
+
+async def wait_webhook(provider_id: str) -> dict:
+    """Attend le verdict terminal livré par le webhook, SANS interroger pawaPay
+    (pas de polling). Retourne {status, raw, failure, settled_by}."""
+    ev = registry.register(provider_id)
+    try:
+        while True:
+            v = registry.take_verdict(provider_id) or {}
+            if v.get("status") in TERMINAL:
+                return {**v, "settled_by": v.get("settled_by", "webhook")}
+            ev.clear()
+            await ev.wait()
+    finally:
+        registry.close(provider_id)

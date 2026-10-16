@@ -6,6 +6,7 @@ ici on résout la config en BD et on écrit dans le ledger.
 import logging
 
 from core.db import db
+from core.notifications import notify_settled
 from core.fees import compute_fees, fee_network, fee_payer, prepays_payout_fee, provider_fee
 
 log = logging.getLogger("ai_browser2")
@@ -67,3 +68,32 @@ async def refund_payout(row: dict) -> None:
                         transaction_id=tx_id, reason="payout_refund")
     if on_platform and fee:
         await db.credit_platform(fee, transaction_id=tx_id, reason="payout_refund")
+
+
+async def settle_verdict(provider_id: str, internal: str, message: str,
+                         settled_by: str = "webhook") -> None:
+    """MAJ BD + comptabilité + notification client pour un verdict terminal
+    d'agrégateur (webhook, ou vérification manuelle d'un payout). Idempotent."""
+    row = await db.get_transaction_by_provider_id(provider_id)
+    if not row:
+        return
+    await db.update_status_by_provider_id(provider_id, internal, message=message,
+                                          settled_by=settled_by)
+    # Comptabilité (idempotente, via ledger) : un PAYIN réussi crédite l'app ;
+    # un PAYOUT échoué/annulé rembourse le débit réservé (réussi : le débit reste).
+    row_type = (row.get("type") or "payin").lower()
+    app_id = row.get("app_id")
+    if app_id is not None and row.get("id"):
+        if row_type == "payin" and internal == "successful":
+            await credit_payin(app_id, row["id"], row.get("amount", 0),
+                               row.get("aggregator", ""), row.get("network", ""))
+        elif row_type == "payout" and internal in ("failed", "cancelled"):
+            await refund_payout(row)
+    # Idempotent : la réservation (tx, event) empêche un double envoi.
+    notify_settled(
+        row["id"], internal, transaction_ref=row.get("transaction_ref", ""),
+        amount=row.get("amount", 0), network=row.get("network", ""),
+        phone=row.get("phone", ""), end_user_ref=row.get("end_user_ref"),
+        provider_transaction_id=provider_id,
+        callback_url=row.get("callback_url") or "",
+    )

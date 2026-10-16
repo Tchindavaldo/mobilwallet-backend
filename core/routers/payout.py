@@ -16,7 +16,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from core import registry
+from core import registry, tenants
 from core.auth import AuthContext, require_api_key
 from core.config import settings
 from core import settlement
@@ -112,7 +112,7 @@ async def _execute_payout(
 
     tx_id = await db.insert_pending_payout(
         req.aggregator, req, app_id=app_id, api_key_id=api_key_id,
-        end_user_ref=req.end_user_ref,
+        end_user_ref=req.end_user_ref, callback_url=req.callback_url,
     )
 
     # 1) Réservation atomique du solde (débit = montant + frais agrégateur si
@@ -221,7 +221,7 @@ async def execute_platform_payout(
     if settings.mock_payments:
         return await _platform_payout_mock(req, debug)
 
-    tx_id = await db.insert_pending_payout(req.aggregator, req)
+    tx_id = await db.insert_pending_payout(req.aggregator, req, callback_url=req.callback_url)
     # Débit plateforme SANS contrôle de solde (peut devenir négatif).
     await db.debit_platform(await _platform_total(req), transaction_id=tx_id, currency=req.currency)
     balance_after = await db.get_platform_balance()
@@ -288,7 +288,7 @@ async def _finalize_platform_payout_bg(req, tx_id, provider_id, transaction_ref)
 async def _platform_payout_mock(req, debug):
     """Mode mock du payout plateforme (sans DigiKUNTZ, vraie compta plateforme)."""
     import random
-    tx_id = await db.insert_pending_payout(req.aggregator, req)
+    tx_id = await db.insert_pending_payout(req.aggregator, req, callback_url=req.callback_url)
     await db.debit_platform(await _platform_total(req), transaction_id=tx_id, currency=req.currency)
     balance_after = await db.get_platform_balance()
     provider_id = f"mock_payout_{tx_id}"
@@ -342,7 +342,7 @@ async def _execute_payout_mock(req, app_id, api_key_id, debug):
     import random
     tx_id = await db.insert_pending_payout(
         req.aggregator, req, app_id=app_id, api_key_id=api_key_id,
-        end_user_ref=req.end_user_ref)
+        end_user_ref=req.end_user_ref, callback_url=req.callback_url)
     charges = await settlement.payout_charges(req.aggregator, req.account_bank_code, req.amount)
     reserved = await db.reserve_payout(app_id, req.amount + charges["app_extra"], tx_id, req.currency)
     if not reserved or not reserved.get("ok"):
@@ -418,3 +418,32 @@ async def payout(
     Socket.IO ; consultable aussi par `GET /status/{transaction_id}`.
     """
     return await _execute_payout(req, ctx.app_id, ctx.api_key_id, debug)
+
+
+@router.get(
+    "/payout/{transaction_ref}/check",
+    tags=["payout"],
+    summary="Vérifier le statut d'un virement chez l'agrégateur",
+    responses={404: {"description": "Aucun virement pour cette référence."},
+               502: {"description": "Agrégateur injoignable, réessayez."}},
+)
+async def check_payout(transaction_ref: str, ctx: AuthContext = Depends(require_api_key)):
+    """Interroge UNE fois l'agrégateur sur un virement de votre app (pas de
+    polling : le verdict arrive normalement par webhook). Si le statut est final
+    (`successful`/`failed`/`cancelled`), il est appliqué tout de suite
+    (BD + remboursement si échec + notification)."""
+    tx = await tenants.get_transaction_scoped(transaction_ref, ctx.app_id)
+    if tx is None or (tx.get("type") or "").lower() != "payout":
+        raise HTTPException(404, f"No payout found for ref '{transaction_ref}'")
+    provider_id = tx.get("provider_transaction_id") or ""
+    if tx.get("status") in ("successful", "failed", "cancelled") or not provider_id:
+        return {"transaction_id": transaction_ref, "status": tx.get("status"),
+                "message": tx.get("message"), "final": True, "source": "database"}
+    res = await _flow(tx.get("aggregator", "")).check_payout_status(provider_id)
+    if res is None:
+        raise HTTPException(502, "Agrégateur injoignable, réessayez.")
+    if res["terminal"]:
+        await settlement.settle_verdict(provider_id, res["status"], res["message"],
+                                        settled_by="manual_check")
+    return {"transaction_id": transaction_ref, "status": res["status"],
+            "message": res["message"], "final": res["terminal"], "source": "aggregator"}

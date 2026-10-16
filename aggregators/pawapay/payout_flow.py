@@ -1,7 +1,12 @@
 """Payout (virement sortant) pawaPay — même interface que digikuntz.payout_flow.
 
 `core/routers/payout.py` choisit le module selon l'agrégateur et appelle
-`initiate_payout` / `poll_payout_status` / `friendly_msg` / `PayoutUpstreamError`.
+`initiate_payout` / `poll_payout_status` / `check_payout_status` / `friendly_msg`
+/ `PayoutUpstreamError`.
+
+Pas de polling continu sur les payouts pawaPay : le verdict arrive par webhook.
+`check_payout_status` fait UN appel GET /v2/payouts/{id}, à la demande
+(endpoint `GET /payout/{ref}/check`).
 """
 
 import logging
@@ -45,11 +50,31 @@ async def initiate_payout(req) -> dict:
     }
 
 
+def _message(status: str, failure: dict | None) -> str:
+    msg = friendly_msg(status)
+    detail = client.failure_message(failure)
+    return f"{msg} {detail}" if detail and status in ("failed", "cancelled") else msg
+
+
 async def poll_payout_status(provider_id: str) -> dict:
-    """Attend le statut final (webhook ou polling GET /v2/payouts/{id})."""
-    v = await client.poll_until_final("payouts", provider_id)
-    msg = friendly_msg(v["status"])
-    detail = client.failure_message(v.get("failure"))
-    if detail and v["status"] in ("failed", "cancelled"):
-        msg = f"{msg} {detail}"
-    return {"status": v["status"], "message": msg, "settled_by": v["settled_by"]}
+    """Attend le statut final livré par le webhook (aucun appel à pawaPay)."""
+    v = await client.wait_webhook(provider_id)
+    return {"status": v["status"], "message": _message(v["status"], v.get("failure")),
+            "settled_by": v["settled_by"]}
+
+
+async def check_payout_status(provider_id: str) -> dict | None:
+    """UN appel GET /v2/payouts/{id}. Retourne {status, raw, message, terminal}
+    ou None si pawaPay est injoignable. Un statut terminal est déposé dans le
+    registre (réveille l'attente webhook, qui règle le payout)."""
+    res = await client.fetch_status("payouts", provider_id)
+    if res is None:
+        return None
+    status = res["internal"]
+    terminal = status in client.TERMINAL
+    if terminal:
+        client.registry.deliver(provider_id, {"status": status, "raw": res["raw"],
+                                              "failure": res["failure"],
+                                              "settled_by": "manual_check"})
+    return {"status": status, "raw": res["raw"], "terminal": terminal,
+            "message": _message(status, res["failure"])}

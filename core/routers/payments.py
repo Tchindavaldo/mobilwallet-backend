@@ -54,6 +54,7 @@ async def _execute_payment_mock(
     tx_id = await db.insert_pending(
         "mock", "mock", payment,
         app_id=app_id, api_key_id=api_key_id, end_user_ref=req.end_user_ref,
+        callback_url=req.callback_url,
     )
 
     # Phase 1 : retour immédiat "USSD envoyé"
@@ -220,6 +221,7 @@ async def _execute_payment(
     tx_id = await db.insert_pending(
         req.aggregator, req.mode, payment,
         app_id=app_id, api_key_id=api_key_id, end_user_ref=req.end_user_ref,
+        callback_url=req.callback_url,
     )
     result = None
     engine_used = "replay"
@@ -306,6 +308,7 @@ async def _execute_direct(cls, req, app_id, api_key_id, debug, app_name):
     tx_id = await db.insert_pending(
         req.aggregator, "api", payment,
         app_id=app_id, api_key_id=api_key_id, end_user_ref=req.end_user_ref,
+        callback_url=req.callback_url,
     )
     result = None
     try:
