@@ -25,13 +25,16 @@ _MESSAGES = {
     "successful": "Paiement effectué avec succès.",
     "failed": "Le paiement a échoué.",
     "cancelled": "Paiement non validé / annulé.",
+    "error": "Paiement introuvable chez le prestataire : rien n'a été débité. Merci de réessayer.",
 }
 
 
 def friendly_msg(status: str, failure: dict | None = None) -> str:
-    base = _MESSAGES.get(status, "Paiement en cours.")
+    """Message client. En échec/annulation, la raison précise (FR) prime."""
     detail = client.failure_message(failure)
-    return f"{base} ({detail})" if detail and status in ("failed", "cancelled") else base
+    if detail and status in ("failed", "cancelled"):
+        return detail
+    return _MESSAGES.get(status, "Paiement en cours.")
 
 
 class PawapayAggregator(Aggregator):
