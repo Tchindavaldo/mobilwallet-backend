@@ -79,8 +79,10 @@ ai_browser2/
 │   ├── config.py                 settings centralisés depuis .env (DigiKUNTZ, FLW, LLM, Supabase,
 │   │                             retry_window_* par réseau, max_tabs_per_browser, mock_payments,
 │   │                             digikuntz.use_callback).
-│   ├── db.py                     Couche Supabase async (no-op si non configuré) : transactions,
-│   │                             curl_templates, transaction_traces, transaction_errors, app_settings.
+│   ├── db.py                     Couche Supabase async (no-op si non configuré) : transactions (audit, statut, annulation) ;
+│   │                             (core/db_diagnostics.py, core/db_config.py, core/db_ledger.py en mixins).
+│   ├── db_diagnostics.py         DiagnosticsMixin (hérité par Database) : transaction_errors, traces IA.
+│   ├── db_config.py              ConfigMixin (hérité par Database) : réglages app_settings, templates curl.
 │   ├── db_ledger.py              LedgerMixin (hérité par Database) : comptabilité —
 │   │                             app_ledger (credit_app/get_app_balance/reserve_payout/backfill/total),
 │   │                             platform_ledger (credit_platform/debit_platform/get_platform_balance),
