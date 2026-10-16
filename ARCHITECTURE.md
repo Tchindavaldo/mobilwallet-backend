@@ -93,10 +93,16 @@ ai_browser2/
 │   ├── settlement.py             Imputation en compta (commune à tous les agrégateurs) : credit_payin,
 │   │                             payout_charges, refund_payout, settle_verdict (verdict terminal -> BD + compta + notif).
 │   │                             Résout taux + fee_payer en BD.
-│   ├── browser.py                BrowserSession (1 transaction = 1 contexte isolé : page, capture
-│   │                             réseau, frame active, snapshot, actions, wait_for_page_change) +
-│   │                             BrowserController (POOL : acquire/release_session, N sessions par
-│   │                             Chrome puis 2e Chrome). CapturedRequest, DomSnapshot.
+│   ├── browser/                  Couche navigateur Playwright (importée via `core.browser`) :
+│   │   ├── __init__.py           Ré-exporte CapturedRequest, DomSnapshot, BrowserSession, BrowserController.
+│   │   ├── models.py             CapturedRequest (capture réseau, to_curl) + DomSnapshot.
+│   │   ├── session.py            BrowserSession (1 transaction = 1 contexte isolé) : état + open/close.
+│   │   ├── diagnostics.py        Mixin : page instrumentée, console/réseau, requêtes en vol,
+│   │   │                         signaux d'erreur, watch/wait_for_page_change.
+│   │   ├── capture.py            Mixin : capture réseau (hook crypto, requêtes charge/verify).
+│   │   ├── actions.py            Mixin : goto/reload, iframe, snapshot DOM, click/fill/select/scroll/wait.
+│   │   └── controller.py         BrowserController (POOL : acquire/release_session, N sessions par
+│   │                             Chrome puis 2e Chrome).
 │   ├── browser_runner.py         Orchestration navigateur générique : acquiert une session, crée
 │   │                             la transaction, navigue, lance ReasoningLoop, délègue le verdict à
 │   │                             l'agrégateur, capture charge/verify, construit le curl_template.
