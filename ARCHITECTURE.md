@@ -86,6 +86,7 @@ ai_browser2/
 │   ├── db.py                     Couche Supabase async (no-op si non configuré) : transactions (audit, statut, annulation) ;
 │   │                             (core/db_diagnostics.py, core/db_config.py, core/db_ledger.py en mixins).
 │   ├── db_diagnostics.py         DiagnosticsMixin (hérité par Database) : transaction_errors, traces IA.
+│   ├── db_reserve.py             ReserveMixin : réserve de frais de payout PAR APP et PAR RÉSEAU, au centime (app_reserve_ledger, RPC reserve_payout_with_fee).
 │   ├── db_config.py              ConfigMixin (hérité par Database) : réglages app_settings, templates curl.
 │   ├── db_ledger.py              LedgerMixin (hérité par Database) : comptabilité —
 │   │                             app_ledger (credit_app/get_app_balance/reserve_payout/backfill/total),
@@ -97,6 +98,7 @@ ai_browser2/
 │   ├── aggregator_ops.py         Accès neutre aux opérations optionnelles (aggregators.<nom>.operations).
 │   ├── availability.py           Dispo opérateurs (neutre) : list + guard 503 sur /pay et /payout si CLOSED (DELAYED = payout en file).
 │   ├── status_check.py           Vérif. manuelle chez l'agrégateur (1 appel, payin/payout) -> settle_verdict.
+│   ├── treasury.py               Soldes réels, réconciliation, reversement auto (réserve libérée + surplus d'arrondi) à la plateforme.
 │   ├── settlement.py             Imputation en compta (commune à tous les agrégateurs) : credit_payin,
 │   │                             payout_charges, refund_payout, settle_verdict (verdict terminal -> BD + compta + notif).
 │   │                             Résout taux + fee_payer en BD.
@@ -354,3 +356,25 @@ C'est donc à **nous** de tenir le **solde de chaque app**.
   (objectif + decide_browser_outcome). **Ne jamais y remettre de "code qui décide".**
 - Toucher la persistance → `core/db.py` (+ une migration dans `schema/migrations/`).
 - Toucher les endpoints/modèles → `core/server.py` puis régénérer `docs/openapi.json`.
+
+
+## Frais et réserves (migration 026)
+
+Dépôt réussi (fee_payer=app, prepay_payout_fee) : frais agrégateur et commission
+MobileWallet arrondis à l'excès ; ceil(brut x taux de payout du réseau du dépôt)
+va dans la **réserve de l'app pour ce réseau** (app_reserve_ledger, au centime) ;
+le reste sur le solde de l'app (francs entiers).
+
+Payout de X vers le réseau n (SQL `reserve_payout_with_fee`, atomique) :
+- partie couverte par la réserve n : frais EXACTS (centimes) pris sur la réserve,
+  qui couvre donc toujours, quelle que soit la façon de retirer ;
+- partie venue d'un autre réseau m : frais arrondis à l'excès pris sur le solde,
+  et la réserve m correspondante est libérée vers la plateforme ;
+- solde vidé : la réserve restante est libérée ;
+- échec : chaque débit (solde, réserves) est rendu.
+
+core/treasury.py reverse à la plateforme, en francs entiers et quand rien n'est en
+vol, la réserve libérée puis le surplus d'arrondi (écart réel - interne, < 10 XAF).
+`GET /payout/quote` donne au client les frais pris sur son solde avant d'appeler
+`POST /payout` (qui renvoie aussi `fee` et `total_debited`). `GET /balance` (app)
+= solde retirable ; `GET /admin/apps/{id}/balance` = solde + réserves par réseau + total.

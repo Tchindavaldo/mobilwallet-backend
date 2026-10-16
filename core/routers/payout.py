@@ -155,9 +155,11 @@ async def _prepare_payout(req: PayoutRequest, app_id: int, api_key_id: int | Non
     charges = await settlement.payout_charges(req.aggregator, req.account_bank_code, req.amount)
     if charges["provider_fee"]:
         await db.set_provider_fee(tx_id, charges["provider_fee"])
-    reserved = await db.reserve_payout(app_id, req.amount + charges["app_extra"], tx_id, req.currency)
+    reserved = await settlement.reserve_app_payout(app_id, req.aggregator, req.account_bank_code,
+                                                   req.amount, tx_id, req.currency)
     if not reserved or not reserved.get("ok"):
         balance = (reserved or {}).get("balance", 0)
+        needed = (reserved or {}).get("needed", req.amount + charges["provider_fee"])
         await db.update_payout(
             tx_id, status="failed", success=False,
             message="Solde insuffisant pour ce virement.")
@@ -167,10 +169,11 @@ async def _prepare_payout(req: PayoutRequest, app_id: int, api_key_id: int | Non
              "message": (f"Solde insuffisant chez {req.aggregator} pour effectuer ce "
                          f"virement (les soldes sont séparés par agrégateur)."),
              "aggregator": req.aggregator,
-             "balance": balance, "requested": req.amount + charges["app_extra"],
-             "provider_fee": charges["app_extra"], "currency": req.currency},
+             "balance": balance, "requested": needed,
+             "fee": (reserved or {}).get("fee_from_balance", 0), "currency": req.currency},
         )
     balance_after = reserved.get("balance_after")
+    _FEES[tx_id] = int(reserved.get("fee_from_balance") or 0)
     if charges["platform_extra"]:
         await db.debit_platform(charges["platform_extra"], transaction_id=tx_id,
                                 reason="payout_provider_fee")
@@ -202,19 +205,19 @@ async def _apply_init(req, app_id, tx_id, init, balance_after, debug):
             provider_transaction_id=provider_id, callback_url=req.callback_url)
         return _render(req, internal, payout_flow.friendly_msg(internal),
                        transaction_ref, provider_id, init["raw_status"],
-                       balance_after, debug)
+                       balance_after, debug, tx_id)
 
     # 3b) pending : on rend la main et on finalise (poll -> verdict) en fond.
     asyncio.create_task(_finalize_payout_bg(req, tx_id, app_id, provider_id,
                                             transaction_ref))
     return _render(req, "pending", "Virement en cours de traitement.",
                    transaction_ref, provider_id, init["raw_status"],
-                   balance_after, debug)
+                   balance_after, debug, tx_id)
 
 
 async def _refund(app_id: int, req: PayoutRequest, tx_id: int) -> None:
-    """Rembourse le débit d'un payout échoué : montant + frais imputés (cf.
-    core.settlement). Idempotent sur (transaction_id, direction='credit')."""
+    """Rembourse ce qu'un payout échoué a débité (solde + réserves, cf.
+    core.settlement). Idempotent."""
     charges = await settlement.payout_charges(req.aggregator, req.account_bank_code, req.amount)
     await settlement.refund_payout({
         "app_id": app_id, "id": tx_id, "amount": req.amount,
@@ -281,7 +284,7 @@ async def execute_platform_payout(
                        callback_url=req.callback_url)
         return _render(req, internal, payout_flow.friendly_msg(internal),
                        transaction_ref, provider_id, init["raw_status"],
-                       balance_after, debug)
+                       balance_after, debug, tx_id)
 
     asyncio.create_task(_finalize_platform_payout_bg(req, tx_id, provider_id, transaction_ref))
     return _render(req, "pending", "Virement plateforme en cours de traitement.",
@@ -319,7 +322,7 @@ async def _platform_payout_mock(req, debug):
     scenario = "fail" if random.random() < 0.2 else "success"
     asyncio.create_task(_mock_finalize_platform(req, tx_id, scenario, provider_id, transaction_ref))
     return _render(req, "pending", "Virement plateforme en cours (mock).",
-                   transaction_ref, provider_id, "payout_pending", balance_after, debug)
+                   transaction_ref, provider_id, "payout_pending", balance_after, debug, tx_id)
 
 
 async def _mock_finalize_platform(req, tx_id, scenario, provider_id, transaction_ref):
@@ -366,8 +369,8 @@ async def _execute_payout_mock(req, app_id, api_key_id, debug):
     tx_id = await db.insert_pending_payout(
         req.aggregator, req, app_id=app_id, api_key_id=api_key_id,
         end_user_ref=req.end_user_ref, callback_url=req.callback_url)
-    charges = await settlement.payout_charges(req.aggregator, req.account_bank_code, req.amount)
-    reserved = await db.reserve_payout(app_id, req.amount + charges["app_extra"], tx_id, req.currency)
+    reserved = await settlement.reserve_app_payout(app_id, req.aggregator, req.account_bank_code,
+                                                   req.amount, tx_id, req.currency)
     if not reserved or not reserved.get("ok"):
         balance = (reserved or {}).get("balance", 0)
         await db.update_payout(tx_id, status="failed", success=False,
@@ -376,13 +379,14 @@ async def _execute_payout_mock(req, app_id, api_key_id, debug):
                                   "message": "Solde insuffisant pour effectuer ce virement.",
                                   "balance": balance, "requested": req.amount})
     balance_after = reserved.get("balance_after")
+    _FEES[tx_id] = int(reserved.get("fee_from_balance") or 0)
     provider_id = f"mock_payout_{tx_id}"
     transaction_ref = f"mock_{tx_id}"
     scenario = "fail" if random.random() < 0.2 else "success"
     asyncio.create_task(_mock_finalize_payout(req, tx_id, app_id, scenario,
                                               provider_id, transaction_ref))
     return _render(req, "pending", "Virement en cours de traitement (mock).",
-                   transaction_ref, provider_id, "payout_pending", balance_after, debug)
+                   transaction_ref, provider_id, "payout_pending", balance_after, debug, tx_id)
 
 
 async def _mock_finalize_payout(req, tx_id, app_id, scenario, provider_id, transaction_ref):
@@ -401,11 +405,18 @@ async def _mock_finalize_payout(req, tx_id, app_id, scenario, provider_id, trans
                    provider_transaction_id=provider_id, callback_url=req.callback_url)
 
 
-def _render(req, status, message, transaction_ref, provider_id, raw, balance_after, debug):
+# Frais pris sur le solde de l'app par payout (tx_id -> XAF), pour la réponse.
+_FEES: dict[int, int] = {}
+
+
+def _render(req, status, message, transaction_ref, provider_id, raw, balance_after, debug,
+            tx_id: int | None = None):
     """Construit la réponse client (défaut) ou admin/debug (?debug=true)."""
+    fee = _FEES.pop(tx_id, 0) if tx_id is not None else 0
     client = PayoutResponse(
         success=(status == "successful"), status=status, message=message,
-        transaction_id=transaction_ref, code=200)
+        transaction_id=transaction_ref, code=200, fee=fee,
+        total_debited=req.amount + fee)
     if not debug:
         return client
     full = PayoutResponseDebug(

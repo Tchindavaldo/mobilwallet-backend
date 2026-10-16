@@ -105,7 +105,8 @@ FastAPI génère automatiquement la doc OpenAPI :
 | GET | `/aggregators` | modules disponibles + réseaux + taux de frais |
 | GET | `/aggregators/{name}/fees` | taux détaillés + simulation pour un montant |
 | POST | `/pay` | exécuter un paiement (encaissement) |
-| POST | `/payout` | effectuer un virement (retrait), débité du solde de l'app |
+| POST | `/payout` | effectuer un virement (retrait), débité du solde de l'app ; renvoie `fee` et `total_debited` |
+| GET | `/payout/quote` | devis : frais débités du solde (0 si couverts par la réserve du réseau), solde après |
 | GET | `/balance` | solde courant de votre app (XAF) |
 | GET | `/availability?aggregator=pawapay` | état des opérateurs (OPERATIONAL / DELAYED / CLOSED). `/pay` et `/payout` renvoient 503 `operator_unavailable` si CLOSED ; payout DELAYED accepté (file d attente) |
 | POST | `/operators/predict` | numéro libre -> format international + opérateur |
@@ -132,7 +133,8 @@ FastAPI génère automatiquement la doc OpenAPI :
 | GET | `/admin/digikuntz/balance` | solde réel du compte global DigiKUNTZ |
 | GET | `/admin/pawapay/balance` | soldes réels des wallets pawaPay |
 | GET | `/admin/pawapay/config` | configuration pawaPay : opérateurs actifs, montants min/max dépôt/payout |
-| GET | `/admin/reconciliation` | par agrégateur : Σ soldes apps + plateforme vs solde réel |
+| GET | `/admin/reconciliation` | par agrégateur : Σ soldes apps + réserves de frais des apps + plateforme vs solde réel |
+| POST | `/admin/treasury/sweep` | reverse à la plateforme le surplus d'arrondi (automatique après chaque règlement) |
 | GET | `/admin/platform/balance` | solde plateforme (argent propre MobileWallet) |
 | POST | `/admin/platform/credit` | recharger le solde plateforme |
 | POST | `/admin/platform/payout` | virement débité de la plateforme (sans contrôle de solde) |

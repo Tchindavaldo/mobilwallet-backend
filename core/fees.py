@@ -35,7 +35,7 @@ from dataclasses import dataclass
 class FeeBreakdown:
     gross: int            # montant brut (ce que le client a payé)
     provider_fee: int     # frais agrégateur pris sur le wallet marchand (0 si 'customer')
-    payout_fee_reserve: int  # frais de RETRAIT prépayés au dépôt (gardés par la plateforme)
+    payout_fee_reserve: int  # frais de RETRAIT prépayés au dépôt (réserve de l'app)
     mw_commission: int    # commission MobileWallet
     app_amount: int       # crédité à l'app
     platform_amount: int  # crédité à la plateforme MW (négatif si elle supporte les frais)
@@ -101,8 +101,7 @@ def compute_fees(
 
     `agg_fee_rate` : taux de frais de DÉPÔT de l'agrégateur.
     `payout_fee_rate` : taux de frais de RETRAIT ; si `prepay_payout_fee`, on les
-    retient dès le dépôt : l'app est créditée de B tel que B + frais_retrait(B)
-    = ce qui reste, pour que retirer B plus tard soit déjà couvert.
+    retient dès le dépôt ceil(brut x taux) dans la réserve de l'app (par réseau).
 
     `agg_config` : ligne de la table `aggregators` (défaut agrégateur).
     `app_config` : dict avec mw_commission_type/value issus de la table `apps`
@@ -114,7 +113,8 @@ def compute_fees(
     if comm_type == "flat":
         mw_commission = min(int(comm_value), gross)
     else:
-        mw_commission = math.floor(gross * comm_value)
+        # Arrondi à l'excès : la fraction de franc revient à la plateforme.
+        mw_commission = math.ceil(gross * comm_value) if comm_value > 0 else 0
 
     fee = provider_fee(gross, agg_config, agg_fee_rate)
     if fee_payer(agg_config) == "platform":
@@ -126,10 +126,10 @@ def compute_fees(
         platform_amount = mw_commission
     reserve = 0
     if prepays_payout_fee(agg_config) and payout_fee_rate > 0 and app_amount > 0:
-        net = app_amount
-        app_amount = math.floor(net / (1 + payout_fee_rate))
-        reserve = net - app_amount
-        platform_amount += reserve
+        # Réserve de l'APP pour le réseau du dépôt : ceil(brut x taux de payout).
+        # Elle couvre toujours les frais exacts d'un retrait vers ce réseau.
+        reserve = min(math.ceil(gross * payout_fee_rate), app_amount)
+        app_amount -= reserve
     return FeeBreakdown(
         gross=gross,
         provider_fee=fee,

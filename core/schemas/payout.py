@@ -71,6 +71,9 @@ class PayoutResponse(BaseModel):
     code: int = Field(200, description="Code HTTP de la réponse (200 si OK).")
     dev_message: str = Field("", description="Information technique pour VOUS (intégrateur), "
                              "à ne pas afficher à l'utilisateur. Vide le plus souvent.")
+    fee: int = Field(0, description="Frais de virement débités du solde de l'app (XAF). "
+                     "0 si couverts par la réserve de frais prépayée au dépôt.")
+    total_debited: int = Field(0, description="Montant + frais débités du solde de l'app.")
 
 
 class PayoutResponseDebug(PayoutResponse):
@@ -79,3 +82,16 @@ class PayoutResponseDebug(PayoutResponse):
     provider_transaction_id: str = ""
     raw_status: str = ""
     balance_after: int | None = None
+
+
+class PayoutQuote(BaseModel):
+    """Devis d'un payout : ce qu'il coûterait au solde de l'app, sans rien débiter."""
+    aggregator: str
+    account_bank_code: str
+    amount: int
+    fee: int = Field(..., description="Frais débités du solde de l'app (XAF, arrondis à l'excès).")
+    total_debited: int = Field(..., description="Montant + frais débités du solde.")
+    balance: int = Field(..., description="Solde actuel de l'app chez cet agrégateur.")
+    balance_after: int
+    sufficient: bool = Field(..., description="Le solde suffit-il pour ce virement ?")
+    currency: str = "XAF"

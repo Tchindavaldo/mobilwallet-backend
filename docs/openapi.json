@@ -703,6 +703,82 @@
         }
       }
     },
+    "/payout/quote": {
+      "get": {
+        "tags": [
+          "payout"
+        ],
+        "summary": "Devis d'un virement : frais débités du solde, sans rien débiter",
+        "description": "Ce que coûterait ce virement au solde de votre app. Vers le réseau de vos\nencaissements, les frais sont déjà prépayés (fee = 0) ; vers l'autre réseau,\nils sont pris sur le solde au taux de ce réseau, arrondis au franc supérieur.",
+        "operationId": "payout_quote_payout_quote_get",
+        "parameters": [
+          {
+            "name": "amount",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "Montant à virer (XAF).",
+              "title": "Amount"
+            },
+            "description": "Montant à virer (XAF)."
+          },
+          {
+            "name": "account_bank_code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ORANGEMONEY | MTN",
+              "title": "Account Bank Code"
+            },
+            "description": "ORANGEMONEY | MTN"
+          },
+          {
+            "name": "aggregator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "digikuntz",
+              "title": "Aggregator"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayoutQuote"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/payout/bulk": {
       "post": {
         "tags": [
@@ -2145,7 +2221,7 @@
           "admin"
         ],
         "summary": "Solde courant d'une app",
-        "description": "Solde logique de l'app = somme des encaissements réussis − ses retraits.",
+        "description": "Solde réel de l'app (retirable) + sa réserve de frais de payout prépayés,\net le total des deux. Vue admin : l'app elle-même ne voit que `balance`.",
         "operationId": "admin_app_balance_admin_apps__app_id__balance_get",
         "parameters": [
           {
@@ -2455,8 +2531,55 @@
           "admin"
         ],
         "summary": "Réconciliation par agrégateur : soldes internes vs soldes réels",
-        "description": "Pour CHAQUE agrégateur : Σ soldes apps + solde plateforme (portion de cet\nagrégateur) doit égaler le solde réel du compte chez lui (compte global\nDigiKUNTZ, wallets pawaPay XAF). Un écart sur un agrégateur n'affecte pas les\nautres. `reconciled` global = tous les agrégateurs joignables et à l'équilibre.",
+        "description": "Pour CHAQUE agrégateur : Σ soldes apps + Σ réserves de frais des apps +\nsolde plateforme doit égaler le solde réel chez lui. Un écart < 1 XAF\n(centimes d'arrondi) est normal ; il est reversé à la plateforme dès qu'il\natteint 1 XAF (POST /admin/treasury/sweep, automatique après chaque règlement).",
         "operationId": "admin_reconciliation_admin_reconciliation_get",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/treasury/sweep": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Reverser le surplus d'arrondi à la plateforme",
+        "description": "Crédite à la plateforme les francs entiers de surplus d'arrondi (rien si\nune transaction est en vol). Déclenché aussi automatiquement.",
+        "operationId": "admin_treasury_sweep_admin_treasury_sweep_post",
         "parameters": [
           {
             "name": "x-admin-key",
@@ -3527,6 +3650,64 @@
         ],
         "title": "PaymentPageRequest"
       },
+      "PayoutQuote": {
+        "properties": {
+          "aggregator": {
+            "type": "string",
+            "title": "Aggregator"
+          },
+          "account_bank_code": {
+            "type": "string",
+            "title": "Account Bank Code"
+          },
+          "amount": {
+            "type": "integer",
+            "title": "Amount"
+          },
+          "fee": {
+            "type": "integer",
+            "title": "Fee",
+            "description": "Frais débités du solde de l'app (XAF, arrondis à l'excès)."
+          },
+          "total_debited": {
+            "type": "integer",
+            "title": "Total Debited",
+            "description": "Montant + frais débités du solde."
+          },
+          "balance": {
+            "type": "integer",
+            "title": "Balance",
+            "description": "Solde actuel de l'app chez cet agrégateur."
+          },
+          "balance_after": {
+            "type": "integer",
+            "title": "Balance After"
+          },
+          "sufficient": {
+            "type": "boolean",
+            "title": "Sufficient",
+            "description": "Le solde suffit-il pour ce virement ?"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "XAF"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aggregator",
+          "account_bank_code",
+          "amount",
+          "fee",
+          "total_debited",
+          "balance",
+          "balance_after",
+          "sufficient"
+        ],
+        "title": "PayoutQuote",
+        "description": "Devis d'un payout : ce qu'il coûterait au solde de l'app, sans rien débiter."
+      },
       "PayoutRequest": {
         "properties": {
           "amount": {
@@ -3660,6 +3841,18 @@
             "title": "Dev Message",
             "description": "Information technique pour VOUS (intégrateur), à ne pas afficher à l'utilisateur. Vide le plus souvent.",
             "default": ""
+          },
+          "fee": {
+            "type": "integer",
+            "title": "Fee",
+            "description": "Frais de virement débités du solde de l'app (XAF). 0 si couverts par la réserve de frais prépayée au dépôt.",
+            "default": 0
+          },
+          "total_debited": {
+            "type": "integer",
+            "title": "Total Debited",
+            "description": "Montant + frais débités du solde de l'app.",
+            "default": 0
           }
         },
         "type": "object",
