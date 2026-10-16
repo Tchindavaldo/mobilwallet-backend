@@ -33,7 +33,9 @@ async def app_balance(ctx: AuthContext = Depends(require_api_key)):
     """Solde logique de VOTRE app = somme de vos encaissements réussis − vos retraits.
 
     C'est le montant disponible pour un virement (`POST /payout`)."""
-    return {"balance": await db.get_app_balance(ctx.app_id), "currency": "XAF"}
+    return {"balance": await db.get_app_balance(ctx.app_id),
+            "by_aggregator": await db.balances_by_aggregator(ctx.app_id),
+            "currency": "XAF"}
 
 
 @router.get(

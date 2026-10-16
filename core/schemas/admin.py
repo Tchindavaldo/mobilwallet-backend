@@ -55,6 +55,9 @@ class PlatformCredit(BaseModel):
     """Recharge du solde plateforme (argent propre de MobileWallet)."""
     amount: int = Field(..., description="Montant à ajouter au solde plateforme (XAF).",
                         examples=[100000])
+    aggregator: str = Field(..., description="Agrégateur dont le compte réel détient "
+                            "cet argent (soldes séparés par agrégateur).",
+                            examples=["pawapay"])
     currency: str = Field("XAF", description="Devise.")
 
 

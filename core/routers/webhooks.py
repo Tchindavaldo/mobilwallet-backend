@@ -56,7 +56,7 @@ async def _settle(provider_id: str, internal: str, message: str) -> None:
         # (Un payout réussi ne fait rien : le débit reste.)
         row_type = (row.get("type") or "payin").lower()
         app_id = row.get("app_id")
-        if app_id and row.get("id"):
+        if app_id is not None and row.get("id"):
             if row_type == "payin" and internal == "successful":
                 # Split : frais agrégateur (selon fee_payer), commission MW, app.
                 await settlement.credit_payin(app_id, row["id"], row.get("amount", 0),

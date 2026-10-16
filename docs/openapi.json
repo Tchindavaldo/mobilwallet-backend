@@ -2002,8 +2002,8 @@
         "tags": [
           "admin"
         ],
-        "summary": "Réconciliation Σ soldes apps + plateforme vs soldes réels des agrégateurs",
-        "description": "Contrôle l'invariant comptable : Σ soldes apps + solde plateforme doit égaler\nla somme des soldes RÉELS chez les agrégateurs (compte global DigiKUNTZ +\nwallets pawaPay XAF). Un agrégateur injoignable rend le contrôle incomplet.",
+        "summary": "Réconciliation par agrégateur : soldes internes vs soldes réels",
+        "description": "Pour CHAQUE agrégateur : Σ soldes apps + solde plateforme (portion de cet\nagrégateur) doit égaler le solde réel du compte chez lui (compte global\nDigiKUNTZ, wallets pawaPay XAF). Un écart sur un agrégateur n'affecte pas les\nautres. `reconciled` global = tous les agrégateurs joignables et à l'équilibre.",
         "operationId": "admin_reconciliation_admin_reconciliation_get",
         "parameters": [
           {
@@ -3108,6 +3108,14 @@
               100000
             ]
           },
+          "aggregator": {
+            "type": "string",
+            "title": "Aggregator",
+            "description": "Agrégateur dont le compte réel détient cet argent (soldes séparés par agrégateur).",
+            "examples": [
+              "pawapay"
+            ]
+          },
           "currency": {
             "type": "string",
             "title": "Currency",
@@ -3117,7 +3125,8 @@
         },
         "type": "object",
         "required": [
-          "amount"
+          "amount",
+          "aggregator"
         ],
         "title": "PlatformCredit",
         "description": "Recharge du solde plateforme (argent propre de MobileWallet)."
