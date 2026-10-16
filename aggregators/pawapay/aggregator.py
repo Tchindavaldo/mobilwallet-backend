@@ -33,7 +33,8 @@ def friendly_msg(status: str, failure: dict | None = None, network: str | None =
     """Message client. En échec/annulation, la raison précise (FR) prime."""
     detail = client.failure_message(failure, network)
     if detail and status in ("failed", "cancelled"):
-        return detail
+        head = "Paiement annulé." if status == "cancelled" else "Paiement échoué."
+        return f"{head} {detail}"
     return _MESSAGES.get(status, "Paiement en cours.")
 
 

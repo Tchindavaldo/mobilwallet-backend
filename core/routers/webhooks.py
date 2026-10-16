@@ -72,5 +72,13 @@ async def pawapay_webhook(payload: dict):
     if provider_id and internal in client.TERMINAL:
         client.registry.deliver(
             provider_id, {"status": internal, "raw": raw, "failure": failure})
-        await settlement.settle_verdict(provider_id, internal, f"Webhook pawaPay: {raw}")
+        if payload.get("payoutId"):
+            from aggregators.pawapay.payout_flow import _message
+            msg = _message(internal, failure)
+        else:
+            from aggregators.pawapay.aggregator import friendly_msg
+            msg = friendly_msg(internal, failure, payload.get("provider") or
+                               (payer or {}).get("provider"))
+        code = (failure or {}).get("failureCode")
+        await settlement.settle_verdict(provider_id, internal, f"{msg} ({code})" if code else msg)
     return {"received": True}

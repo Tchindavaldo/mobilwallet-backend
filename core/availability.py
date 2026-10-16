@@ -27,8 +27,10 @@ def delayed_message(network: str) -> str:
     """Avertissement d'un payout accepté alors que l'opérateur est DELAYED."""
     other = "Orange Money" if (network or "").upper().startswith("MTN") else "MTN"
     return ("Virement accepté mais mis en file d'attente : l'opérateur a un problème "
-            "temporaire. Il sera envoyé dès son rétablissement. Vous pouvez l'annuler "
-            f"(POST /payout/{{ref}}/cancel) ou réessayer sur un autre réseau ({other}).")
+            "temporaire. Si vous le laissez, il restera en attente et sera envoyé "
+            "automatiquement dès le rétablissement de l'opérateur, ce qui peut prendre "
+            "du temps. Sinon, vous pouvez l'annuler (POST /payout/{ref}/cancel) "
+            f"et réessayer sur un autre réseau ({other}).")
 
 
 def _module(aggregator: str):
