@@ -2145,7 +2145,7 @@
           "admin"
         ],
         "summary": "Solde courant d'une app",
-        "description": "Solde logique de l'app = somme des encaissements réussis − ses retraits.",
+        "description": "Solde réel de l'app (retirable) + sa réserve de frais de payout prépayés,\net le total des deux. Vue admin : l'app elle-même ne voit que `balance`.",
         "operationId": "admin_app_balance_admin_apps__app_id__balance_get",
         "parameters": [
           {
@@ -2455,8 +2455,55 @@
           "admin"
         ],
         "summary": "Réconciliation par agrégateur : soldes internes vs soldes réels",
-        "description": "Pour CHAQUE agrégateur : Σ soldes apps + solde plateforme (portion de cet\nagrégateur) doit égaler le solde réel du compte chez lui (compte global\nDigiKUNTZ, wallets pawaPay XAF). Un écart sur un agrégateur n'affecte pas les\nautres. `reconciled` global = tous les agrégateurs joignables et à l'équilibre.",
+        "description": "Pour CHAQUE agrégateur : Σ soldes apps + Σ réserves de frais des apps +\nsolde plateforme doit égaler le solde réel chez lui. Un écart < 1 XAF\n(centimes d'arrondi) est normal ; il est reversé à la plateforme dès qu'il\natteint 1 XAF (POST /admin/treasury/sweep, automatique après chaque règlement).",
         "operationId": "admin_reconciliation_admin_reconciliation_get",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/treasury/sweep": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Reverser le surplus d'arrondi à la plateforme",
+        "description": "Crédite à la plateforme les francs entiers de surplus d'arrondi (rien si\nune transaction est en vol). Déclenché aussi automatiquement.",
+        "operationId": "admin_treasury_sweep_admin_treasury_sweep_post",
         "parameters": [
           {
             "name": "x-admin-key",

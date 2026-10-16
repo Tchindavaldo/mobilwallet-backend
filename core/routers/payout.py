@@ -154,9 +154,11 @@ async def _prepare_payout(req: PayoutRequest, app_id: int, api_key_id: int | Non
     charges = await settlement.payout_charges(req.aggregator, req.account_bank_code, req.amount)
     if charges["provider_fee"]:
         await db.set_provider_fee(tx_id, charges["provider_fee"])
-    reserved = await db.reserve_payout(app_id, req.amount + charges["app_extra"], tx_id, req.currency)
+    reserved = await db.reserve_payout_with_fee(app_id, req.amount, charges["app_fee"],
+                                                tx_id, req.currency)
     if not reserved or not reserved.get("ok"):
         balance = (reserved or {}).get("balance", 0)
+        needed = (reserved or {}).get("needed", req.amount + charges["app_fee"])
         await db.update_payout(
             tx_id, status="failed", success=False,
             message="Solde insuffisant pour ce virement.")
@@ -166,8 +168,8 @@ async def _prepare_payout(req: PayoutRequest, app_id: int, api_key_id: int | Non
              "message": (f"Solde insuffisant chez {req.aggregator} pour effectuer ce "
                          f"virement (les soldes sont séparés par agrégateur)."),
              "aggregator": req.aggregator,
-             "balance": balance, "requested": req.amount + charges["app_extra"],
-             "provider_fee": charges["app_extra"], "currency": req.currency},
+             "balance": balance, "requested": needed,
+             "provider_fee": charges["app_fee"], "currency": req.currency},
         )
     balance_after = reserved.get("balance_after")
     if charges["platform_extra"]:
@@ -212,7 +214,7 @@ async def _apply_init(req, app_id, tx_id, init, balance_after, debug):
 
 
 async def _refund(app_id: int, req: PayoutRequest, tx_id: int) -> None:
-    """Rembourse le débit d'un payout échoué : montant + frais imputés (cf.
+    """Rembourse ce qu'un payout échoué a débité (solde + réserve de frais, cf.
     core.settlement). Idempotent sur (transaction_id, direction='credit')."""
     charges = await settlement.payout_charges(req.aggregator, req.account_bank_code, req.amount)
     await settlement.refund_payout({
@@ -366,7 +368,8 @@ async def _execute_payout_mock(req, app_id, api_key_id, debug):
         req.aggregator, req, app_id=app_id, api_key_id=api_key_id,
         end_user_ref=req.end_user_ref, callback_url=req.callback_url)
     charges = await settlement.payout_charges(req.aggregator, req.account_bank_code, req.amount)
-    reserved = await db.reserve_payout(app_id, req.amount + charges["app_extra"], tx_id, req.currency)
+    reserved = await db.reserve_payout_with_fee(app_id, req.amount, charges["app_fee"],
+                                                tx_id, req.currency)
     if not reserved or not reserved.get("ok"):
         balance = (reserved or {}).get("balance", 0)
         await db.update_payout(tx_id, status="failed", success=False,

@@ -114,7 +114,8 @@ def compute_fees(
     if comm_type == "flat":
         mw_commission = min(int(comm_value), gross)
     else:
-        mw_commission = math.floor(gross * comm_value)
+        # Arrondi à l'excès : la fraction de franc revient à la plateforme.
+        mw_commission = math.ceil(gross * comm_value) if comm_value > 0 else 0
 
     fee = provider_fee(gross, agg_config, agg_fee_rate)
     if fee_payer(agg_config) == "platform":
@@ -128,8 +129,7 @@ def compute_fees(
     if prepays_payout_fee(agg_config) and payout_fee_rate > 0 and app_amount > 0:
         net = app_amount
         app_amount = math.floor(net / (1 + payout_fee_rate))
-        reserve = net - app_amount
-        platform_amount += reserve
+        reserve = net - app_amount  # réserve de l'APP (app_reserve_ledger), pas la plateforme
     return FeeBreakdown(
         gross=gross,
         provider_fee=fee,

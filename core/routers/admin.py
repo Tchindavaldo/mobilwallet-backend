@@ -8,7 +8,7 @@ ré-exposée ensuite).
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core import auth, registry, tenants
+from core import auth, registry, tenants, treasury
 from core.auth import require_admin
 from core.db import db
 from core.fees import FEE_PAYERS
@@ -206,9 +206,15 @@ async def admin_set_app_commission(app_id: int, body: AppCommissionUpdate):
 
 @router.get("/apps/{app_id}/balance", summary="Solde courant d'une app")
 async def admin_app_balance(app_id: int):
-    """Solde logique de l'app = somme des encaissements réussis − ses retraits."""
-    return {"app_id": app_id, "balance": await db.get_app_balance(app_id),
+    """Solde réel de l'app (retirable) + sa réserve de frais de payout prépayés,
+    et le total des deux. Vue admin : l'app elle-même ne voit que `balance`."""
+    balance = await db.get_app_balance(app_id)
+    reserve = await db.reserves_by_aggregator(app_id)
+    return {"app_id": app_id, "balance": balance,
             "by_aggregator": await db.balances_by_aggregator(app_id),
+            "payout_fee_reserve": sum(reserve.values()),
+            "payout_fee_reserve_by_aggregator": reserve,
+            "total": balance + sum(reserve.values()),
             "currency": "XAF"}
 
 
@@ -284,39 +290,18 @@ async def admin_pawapay_config():
 
 @router.get("/reconciliation", summary="Réconciliation par agrégateur : soldes internes vs soldes réels")
 async def admin_reconciliation():
-    """Pour CHAQUE agrégateur : Σ soldes apps + solde plateforme (portion de cet
-    agrégateur) doit égaler le solde réel du compte chez lui (compte global
-    DigiKUNTZ, wallets pawaPay XAF). Un écart sur un agrégateur n'affecte pas les
-    autres. `reconciled` global = tous les agrégateurs joignables et à l'équilibre."""
-    from aggregators.digikuntz import status_poll
-    from aggregators.pawapay import client as pawapay
+    """Pour CHAQUE agrégateur : Σ soldes apps + Σ réserves de frais des apps +
+    solde plateforme doit égaler le solde réel chez lui. Un écart < 1 XAF
+    (centimes d'arrondi) est normal ; il est reversé à la plateforme dès qu'il
+    atteint 1 XAF (POST /admin/treasury/sweep, automatique après chaque règlement)."""
+    return await treasury.reconciliation()
 
-    glob = await status_poll.fetch_global_balance()
-    pp = await pawapay.fetch_balances()
-    real = {
-        "digikuntz": glob.get("balance") if glob else None,
-        "pawapay": (sum(int(float(b.get("balance") or 0)) for b in pp
-                        if (b.get("currency") or "XAF") == "XAF")
-                    if pp is not None else None),
-    }
-    split = await db.balances_by_aggregator()
-    per: dict = {}
-    for name in sorted(set(real) | set(split["apps"]) | set(split["platform"])):
-        apps, plat = split["apps"].get(name, 0), split["platform"].get(name, 0)
-        r = real.get(name)
-        diff = None if r is None else r - (apps + plat)
-        per[name] = {"apps_total": apps, "platform_balance": plat,
-                     "internal_total": apps + plat, "real_balance": r,
-                     "difference": diff, "reconciled": diff == 0}
-    return {
-        "aggregators": per,
-        "apps_total": sum(v["apps_total"] for v in per.values()),
-        "platform_balance": sum(v["platform_balance"] for v in per.values()),
-        "internal_total": sum(v["internal_total"] for v in per.values()),
-        "real_total": sum(v["real_balance"] or 0 for v in per.values()),
-        "reconciled": all(v["reconciled"] for v in per.values()),
-        "currency": "XAF",
-    }
+
+@router.post("/treasury/sweep", summary="Reverser le surplus d'arrondi à la plateforme")
+async def admin_treasury_sweep():
+    """Crédite à la plateforme les francs entiers de surplus d'arrondi (rien si
+    une transaction est en vol). Déclenché aussi automatiquement."""
+    return {"swept": await treasury.sweep_rounding_surplus()}
 
 
 @router.get("/platform/balance", summary="Solde plateforme (argent propre de MobileWallet)")

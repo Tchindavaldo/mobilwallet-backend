@@ -26,11 +26,12 @@ from core.config import settings
 from core.db_config import ConfigMixin
 from core.db_diagnostics import DiagnosticsMixin
 from core.db_ledger import LedgerMixin
+from core.db_reserve import ReserveMixin
 
 log = logging.getLogger("ai_browser2")
 
 
-class Database(LedgerMixin, DiagnosticsMixin, ConfigMixin):
+class Database(LedgerMixin, ReserveMixin, DiagnosticsMixin, ConfigMixin):
     def __init__(self) -> None:
         self._client = None
         if settings.supabase_url and settings.supabase_key:
