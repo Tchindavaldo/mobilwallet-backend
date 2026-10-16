@@ -129,7 +129,9 @@ async def _execute_payout(
         raise HTTPException(
             422,
             {"error": "insufficient_balance",
-             "message": "Solde insuffisant pour effectuer ce virement.",
+             "message": (f"Solde insuffisant chez {req.aggregator} pour effectuer ce "
+                         f"virement (les soldes sont séparés par agrégateur)."),
+             "aggregator": req.aggregator,
              "balance": balance, "requested": req.amount + charges["app_extra"],
              "provider_fee": charges["app_extra"], "currency": req.currency},
         )

@@ -20,7 +20,7 @@ async def credit_payin(app_id: int | None, tx_id: int | None, amount: int,
                        aggregator: str, network: str) -> None:
     """Split d'un payin réussi : frais agrégateur, commission MW, part de l'app.
     Idempotent (ledger unique par transaction/direction)."""
-    if not (app_id and tx_id):
+    if app_id is None or not tx_id:
         return
     agg_config = await db.get_aggregator_config(aggregator) if aggregator else None
     app_config = await db.get_app_commission(app_id)
@@ -58,7 +58,7 @@ async def refund_payout(row: dict) -> None:
     """Rembourse un payout d'app échoué/annulé : montant + frais imputés à l'app,
     ou frais rendus à la plateforme. Idempotent (ledger)."""
     app_id, tx_id = row.get("app_id"), row.get("id")
-    if not (app_id and tx_id):
+    if app_id is None or not tx_id:
         return
     amount, fee = int(row.get("amount") or 0), int(row.get("provider_fee") or 0)
     agg_config = await db.get_aggregator_config(row.get("aggregator", ""))

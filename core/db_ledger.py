@@ -46,7 +46,7 @@ class LedgerMixin:
     # --- app_ledger (comptabilité par app : crédits payin / débits payout) ---
     async def credit_app(
         self, app_id: int, amount: int, *, transaction_id: int | None = None,
-        currency: str = "XAF", reason: str = "",
+        currency: str = "XAF", reason: str = "", aggregator: str | None = None,
     ) -> None:
         """Crédite le solde d'une app (payin réussi ou remboursement payout).
 
@@ -55,25 +55,28 @@ class LedgerMixin:
         désactivée, app_id/amount manquant, ou (pour l'idempotence) transaction_id
         absent — on n'écrit JAMAIS un credit non rattaché à une transaction.
         """
-        if not self.enabled or not app_id or not amount or transaction_id is None:
+        if not self.enabled or app_id is None or not amount or transaction_id is None:
             return
         await self._insert_ledger_row("app_ledger", {
             "app_id": app_id, "direction": "credit", "amount": int(amount),
             "currency": currency, "transaction_id": transaction_id, "reason": reason,
+            **({"aggregator": aggregator} if aggregator else {}),
         })
 
-    async def credit_app_manual(self, app_id: int, amount: int, *,
-                                currency: str = "XAF", reason: str = "manual") -> None:
+    async def credit_app_manual(self, app_id: int, amount: int, *, aggregator: str,
+                                currency: str = "XAF", reason: str = "manual",
+                                direction: str = "credit") -> None:
         """Crédit MANUEL du solde d'une app (ajustement admin, sans transaction).
 
         Contrairement à credit_app, n'exige pas de transaction_id (pas de payin
-        rattaché). ⚠️ crée de l'argent qui n'existe pas forcément chez DigiKUNTZ :
-        peut introduire un écart visible dans la réconciliation. No-op si BD off."""
-        if not self.enabled or not app_id or not amount:
+        rattaché), mais exige l'agrégateur dont le compte détient l'argent.
+        `direction='debit'` pour un ajustement à la baisse. ⚠️ peut introduire un
+        écart visible dans la réconciliation de cet agrégateur. No-op si BD off."""
+        if not self.enabled or app_id is None or not amount:
             return
         await self._insert_ledger_row("app_ledger", {
-            "app_id": app_id, "direction": "credit", "amount": int(amount),
-            "currency": currency, "reason": reason,
+            "app_id": app_id, "direction": direction, "amount": int(amount),
+            "currency": currency, "reason": reason, "aggregator": aggregator,
         })
 
     async def reserve_payout(
@@ -86,7 +89,7 @@ class LedgerMixin:
           - ok=False -> rien débité (solde insuffisant), `balance` = disponible.
         None si BD désactivée / erreur (l'appelant traite None comme un refus sûr).
         """
-        if not self.enabled or not app_id or not amount or transaction_id is None:
+        if not self.enabled or app_id is None or not amount or transaction_id is None:
             return None
 
         def _rpc():
@@ -100,7 +103,7 @@ class LedgerMixin:
 
     async def get_app_balance(self, app_id: int) -> int:
         """Solde courant d'une app (vue app_balance). 0 si absent / BD désactivée."""
-        if not self.enabled or not app_id:
+        if not self.enabled or app_id is None:
             return 0
 
         def _select():
@@ -134,10 +137,35 @@ class LedgerMixin:
             log.warning("total_apps_balance failed: %s", e)
             return 0
 
+    async def balances_by_aggregator(self, app_id: int | None = None) -> dict:
+        """Soldes par agrégateur : {'apps': {agg: Σ apps}, 'platform': {agg: solde}}
+        si app_id est None (réconciliation), sinon {agg: solde de cette app}."""
+        if not self.enabled:
+            return {} if app_id is not None else {"apps": {}, "platform": {}}
+
+        def _select():
+            q = self._client.table("app_balance_by_aggregator").select("app_id, aggregator, balance")
+            if app_id is not None:
+                rows = q.eq("app_id", app_id).execute().data or []
+                return {r["aggregator"]: int(r["balance"]) for r in rows}
+            apps: dict = {}
+            for r in q.execute().data or []:
+                apps[r["aggregator"]] = apps.get(r["aggregator"], 0) + int(r["balance"])
+            plat = (self._client.table("platform_balance_by_aggregator")
+                    .select("aggregator, balance").execute().data or [])
+            return {"apps": apps,
+                    "platform": {r["aggregator"]: int(r["balance"]) for r in plat}}
+
+        try:
+            return await asyncio.to_thread(_select)
+        except Exception as e:  # noqa: BLE001
+            log.warning("balances_by_aggregator failed: %s", e)
+            return {} if app_id is not None else {"apps": {}, "platform": {}}
+
     # --- platform_ledger (argent propre de MobileWallet : marge/frais/flottant) ---
     async def credit_platform(self, amount: int, *, reason: str = "reload",
                               transaction_id: int | None = None,
-                              currency: str = "XAF") -> None:
+                              currency: str = "XAF", aggregator: str | None = None) -> None:
         """Recharge le solde plateforme (ou rembourse un payout plateforme échoué).
 
         Si transaction_id est fourni (remboursement), l'insertion est idempotente
@@ -147,22 +175,29 @@ class LedgerMixin:
             return
         row = {"direction": "credit", "amount": int(amount), "currency": currency,
                "reason": reason}
+        if aggregator:
+            row["aggregator"] = aggregator
         if transaction_id is not None:
             row["transaction_id"] = transaction_id
         # transaction_id None (recharge manuelle) -> insert simple (pas d'idempotence) ;
         # transaction_id présent (remboursement) -> idempotent via le helper.
         await self._insert_ledger_row("platform_ledger", row)
 
-    async def debit_platform(self, amount: int, *, transaction_id: int,
-                             reason: str = "payout", currency: str = "XAF") -> None:
+    async def debit_platform(self, amount: int, *, transaction_id: int | None,
+                             reason: str = "payout", currency: str = "XAF",
+                             aggregator: str | None = None) -> None:
         """Débite le solde plateforme pour un payout plateforme. SANS contrôle de
         solde (admin de confiance) : le solde peut devenir négatif. Idempotent sur
         (transaction_id, direction)."""
-        if not self.enabled or not amount or transaction_id is None:
+        if not self.enabled or not amount or (transaction_id is None and not aggregator):
             return
-        await self._insert_ledger_row("platform_ledger", {
-            "direction": "debit", "amount": int(amount), "currency": currency,
-            "transaction_id": transaction_id, "reason": reason})
+        row = {"direction": "debit", "amount": int(amount), "currency": currency,
+               "reason": reason}
+        if transaction_id is not None:
+            row["transaction_id"] = transaction_id
+        if aggregator:
+            row["aggregator"] = aggregator
+        await self._insert_ledger_row("platform_ledger", row)
 
     async def get_platform_balance(self) -> int:
         """Solde plateforme courant (vue platform_balance). 0 si BD désactivée.
@@ -283,7 +318,7 @@ class LedgerMixin:
 
         None si l'app n'a pas de surcharge (→ l'appelant tombera sur le défaut
         agrégateur). None aussi si BD désactivée ou app inconnue."""
-        if not self.enabled or not app_id:
+        if not self.enabled or app_id is None:
             return None
 
         def _select():
@@ -312,7 +347,7 @@ class LedgerMixin:
         """Pose ou efface la commission spécifique d'une app.
 
         Passer type=None et value=None pour revenir au défaut agrégateur."""
-        if not self.enabled or not app_id:
+        if not self.enabled or app_id is None:
             return False
 
         patch = {

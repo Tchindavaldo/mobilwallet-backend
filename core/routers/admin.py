@@ -8,7 +8,7 @@ ré-exposée ensuite).
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core import auth, tenants
+from core import auth, registry, tenants
 from core.auth import require_admin
 from core.db import db
 from core.fees import FEE_PAYERS
@@ -208,6 +208,7 @@ async def admin_set_app_commission(app_id: int, body: AppCommissionUpdate):
 async def admin_app_balance(app_id: int):
     """Solde logique de l'app = somme des encaissements réussis − ses retraits."""
     return {"app_id": app_id, "balance": await db.get_app_balance(app_id),
+            "by_aggregator": await db.balances_by_aggregator(app_id),
             "currency": "XAF"}
 
 
@@ -221,10 +222,18 @@ async def admin_app_credit(app_id: int, body: PlatformCredit):
     if app is None:
         raise HTTPException(404, {"error": "app_not_found",
                                   "message": f"Aucune app trouvée avec l'id {app_id}."})
-    await db.credit_app_manual(app_id, body.amount, currency=body.currency,
-                               reason="manual_admin")
+    _check_aggregator(body.aggregator)
+    await db.credit_app_manual(app_id, body.amount, aggregator=body.aggregator,
+                               currency=body.currency, reason="manual_admin")
     return {"app_id": app_id, "balance": await db.get_app_balance(app_id),
+            "by_aggregator": await db.balances_by_aggregator(app_id),
             "currency": body.currency}
+
+
+def _check_aggregator(name: str) -> None:
+    if name not in registry.names():
+        raise HTTPException(400, {"error": "unknown_aggregator",
+                                  "message": f"Agrégateur inconnu : {name}."})
 
 
 @router.post("/ledger/backfill", summary="Amorcer le ledger depuis l'historique des payins")
@@ -273,16 +282,14 @@ async def admin_pawapay_config():
     return conf
 
 
-@router.get("/reconciliation", summary="Réconciliation Σ soldes apps + plateforme vs soldes réels des agrégateurs")
+@router.get("/reconciliation", summary="Réconciliation par agrégateur : soldes internes vs soldes réels")
 async def admin_reconciliation():
-    """Contrôle l'invariant comptable : Σ soldes apps + solde plateforme doit égaler
-    la somme des soldes RÉELS chez les agrégateurs (compte global DigiKUNTZ +
-    wallets pawaPay XAF). Un agrégateur injoignable rend le contrôle incomplet."""
+    """Pour CHAQUE agrégateur : Σ soldes apps + solde plateforme (portion de cet
+    agrégateur) doit égaler le solde réel du compte chez lui (compte global
+    DigiKUNTZ, wallets pawaPay XAF). Un écart sur un agrégateur n'affecte pas les
+    autres. `reconciled` global = tous les agrégateurs joignables et à l'équilibre."""
     from aggregators.digikuntz import status_poll
     from aggregators.pawapay import client as pawapay
-    apps_total = await db.total_apps_balance()
-    platform = await db.get_platform_balance()
-    internal_total = apps_total + platform
 
     glob = await status_poll.fetch_global_balance()
     pp = await pawapay.fetch_balances()
@@ -292,18 +299,22 @@ async def admin_reconciliation():
                         if (b.get("currency") or "XAF") == "XAF")
                     if pp is not None else None),
     }
-    complete = all(v is not None for v in real.values())
-    real_total = sum(v for v in real.values() if v is not None)
-    diff = real_total - internal_total if complete else None
+    split = await db.balances_by_aggregator()
+    per: dict = {}
+    for name in sorted(set(real) | set(split["apps"]) | set(split["platform"])):
+        apps, plat = split["apps"].get(name, 0), split["platform"].get(name, 0)
+        r = real.get(name)
+        diff = None if r is None else r - (apps + plat)
+        per[name] = {"apps_total": apps, "platform_balance": plat,
+                     "internal_total": apps + plat, "real_balance": r,
+                     "difference": diff, "reconciled": diff == 0}
     return {
-        "apps_total": apps_total,
-        "platform_balance": platform,
-        "internal_total": internal_total,
-        "aggregators": real,
-        "real_total": real_total,
-        "difference": diff,
-        "reconciled": diff == 0,
-        "complete": complete,
+        "aggregators": per,
+        "apps_total": sum(v["apps_total"] for v in per.values()),
+        "platform_balance": sum(v["platform_balance"] for v in per.values()),
+        "internal_total": sum(v["internal_total"] for v in per.values()),
+        "real_total": sum(v["real_balance"] or 0 for v in per.values()),
+        "reconciled": all(v["reconciled"] for v in per.values()),
         "currency": "XAF",
     }
 
@@ -312,13 +323,17 @@ async def admin_reconciliation():
 async def admin_platform_balance():
     """Solde plateforme = marge/frais/flottant de MobileWallet. Peut être négatif
     (payouts plateforme non encore rechargés)."""
-    return {"balance": await db.get_platform_balance(), "currency": "XAF"}
+    split = await db.balances_by_aggregator()
+    return {"balance": await db.get_platform_balance(),
+            "by_aggregator": split["platform"], "currency": "XAF"}
 
 
 @router.post("/platform/credit", summary="Recharger le solde plateforme")
 async def admin_platform_credit(body: PlatformCredit):
     """Ajoute des fonds au solde plateforme (recharge manuelle)."""
-    await db.credit_platform(body.amount, reason="reload", currency=body.currency)
+    _check_aggregator(body.aggregator)
+    await db.credit_platform(body.amount, reason="reload", currency=body.currency,
+                             aggregator=body.aggregator)
     return {"balance": await db.get_platform_balance(), "currency": body.currency}
 
 

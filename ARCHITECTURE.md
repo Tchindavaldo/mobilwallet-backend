@@ -161,8 +161,11 @@ ai_browser2/
 │       └── 019_aggregators.sql      Config des taux par agrégateur : aggregator_fee_rate (5% DigiKUNTZ),
 │                                    mw_commission_type/value (percent|flat). Pré-rempli digikuntz 5%/5%.
 │       ├── 022_aggregator_pawapay.sql  Ligne 'pawapay' (commission MW à 0, à ajuster).
-│       └── 023_aggregator_fee_payer.sql aggregators.fee_payer, table aggregator_fee_rates
-│                                       (taux par réseau/opération), transactions.provider_fee.
+│       ├── 023_aggregator_fee_payer.sql aggregators.fee_payer, table aggregator_fee_rates
+│       │                               (taux par réseau/opération), transactions.provider_fee.
+│       └── 024_ledger_by_aggregator.sql Soldes par agrégateur : colonne aggregator sur
+│                                       app_ledger/platform_ledger (trigger), vues *_by_aggregator,
+│                                       reserve_payout contrôle le solde chez l'agrégateur du payout.
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── fly.toml                      Déploiement Fly.io : machine toujours allumée (auto_stop off).
@@ -253,8 +256,11 @@ C'est donc à **nous** de tenir le **solde de chaque app**.
   (marge/frais/flottant), distinct des apps clientes. L'admin le recharge
   (`POST /admin/platform/credit`) et retire dessus (`POST /admin/platform/payout`)
   **sans contrôle de solde** (peut devenir négatif). L'invariant complet est donc
-  `Σ soldes apps + solde plateforme == Σ soldes réels des agrégateurs` (compte global
-  DigiKUNTZ + wallets pawaPay ; cf. `/admin/reconciliation`).
+  **par agrégateur** : `Σ soldes apps + solde plateforme (portion de l'agrégateur) ==
+  solde réel chez cet agrégateur` (compte global DigiKUNTZ, wallets pawaPay ; cf.
+  `/admin/reconciliation`). Chaque écriture de ledger porte son agrégateur (migration
+  024) : un écart ou des tests sur l'un n'affectent pas les autres, et un payout ne
+  dépense que le solde de l'app chez l'agrégateur du payout.
 - **Taux de commission par agrégateur** : stockés en BD (`aggregators`, migration 019),
   modifiables à chaud via `PUT /admin/aggregators/{name}/fees`. Deux taux :
   - `aggregator_fee_rate` : ce que prend l'agrégateur sur le brut (DigiKUNTZ = 5%) ;
