@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 from core import registry, tenants
 from core.auth import AuthContext, require_api_key
 from core.config import settings
-from core import settlement
+from core import settlement, status_check
 from core.db import db
 from core.notifications import notify_settled
 from core.schemas.payout import PayoutRequest, PayoutResponse, PayoutResponseDebug
@@ -435,15 +435,7 @@ async def check_payout(transaction_ref: str, ctx: AuthContext = Depends(require_
     tx = await tenants.get_transaction_scoped(transaction_ref, ctx.app_id)
     if tx is None or (tx.get("type") or "").lower() != "payout":
         raise HTTPException(404, f"No payout found for ref '{transaction_ref}'")
-    provider_id = tx.get("provider_transaction_id") or ""
-    if tx.get("status") in ("successful", "failed", "cancelled") or not provider_id:
-        return {"transaction_id": transaction_ref, "status": tx.get("status"),
-                "message": tx.get("message"), "final": True, "source": "database"}
-    res = await _flow(tx.get("aggregator", "")).check_payout_status(provider_id)
+    res = await status_check.check_transaction(tx)
     if res is None:
         raise HTTPException(502, "Agrégateur injoignable, réessayez.")
-    if res["terminal"]:
-        await settlement.settle_verdict(provider_id, res["status"], res["message"],
-                                        settled_by="manual_check")
-    return {"transaction_id": transaction_ref, "status": res["status"],
-            "message": res["message"], "final": res["terminal"], "source": "aggregator"}
+    return res

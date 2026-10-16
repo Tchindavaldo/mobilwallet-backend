@@ -43,7 +43,8 @@ ai_browser2/
 │   │   │                         bénéficiaire, RÉSERVE atomique du solde (db.reserve_payout),
 │   │   │                         initiate_payout, webhook (+ poll DigiKUNTZ) -> verdict, REMBOURSE si échec.
 │   │   │                         GET /payout/{ref}/check : 1 appel statut agrégateur à la demande.
-│   │   ├── transactions.py       /transactions*, /status/{ref}, /cancel, /balance (scopés à l'app).
+│   │   ├── transactions.py       /transactions*, /status/{ref}, /status/{ref}/check, /cancel, /balance
+│   │   │                         (scopés à l'app).
 │   │   ├── templates.py          /aggregators/{name}/template (consulter/poser le replay).
 │   │   ├── webhooks.py           /webhook/digikuntz + /webhook/pawapay (callbacks statut entrants,
 │   │   │                         règlement commun `_settle` : BD + ledger + notification).
@@ -90,6 +91,7 @@ ai_browser2/
 │   │                             payouts (insert_pending_payout/last_payout_for_account/update_payout).
 │   ├── fees.py                   Calcul PUR de ventilation (compute_fees / fees_info / fee_payer) :
 │   │                             brut → frais agrégateur (selon fee_payer) → commission MW → app + plateforme.
+│   ├── status_check.py           Vérif. manuelle chez l'agrégateur (1 appel, payin/payout) -> settle_verdict.
 │   ├── settlement.py             Imputation en compta (commune à tous les agrégateurs) : credit_payin,
 │   │                             payout_charges, refund_payout, settle_verdict (verdict terminal -> BD + compta + notif).
 │   │                             Résout taux + fee_payer en BD.
@@ -112,6 +114,7 @@ ai_browser2/
 │
 ├── aggregators/                  === UN DOSSIER PAR AGRÉGATEUR ===
 │   └── digikuntz/
+│       ├── status_check.py       check_deposit_status : 1 appel statut DigiKUNTZ à la demande.
 │       ├── aggregator.py         DigikuntzAggregator : implémente l'ABC, s'enregistre, replay (steps
 │       │                         + ReplayConfig par appel), extract_curl_template, matchers.
 │       ├── browser_flow.py       Mode navigateur : browser_objective (prompt FR — le navigateur
@@ -129,6 +132,7 @@ ai_browser2/
 │                                 poll_payout_status (GET {base}/transaction, mapping payout_*,
 │                                 registre webhook⇄polling). Aucun navigateur/LLM/Flutterwave.
 │   └── pawapay/                  Agrégateur « API directe » (Merchant API v2, Bearer token) :
+│       ├── status_check.py       check_deposit_status : 1 appel GET /v2/deposits/{id} à la demande.
 │       ├── client.py             HTTP pawaPay : initiate_deposit/payout, fetch_status, soldes,
 │       │                         mapping statuts (COMPLETED/FAILED/… -> interne), MSISDN 237…,
 │       │                         providers MTN_MOMO_CMR / ORANGE_CMR, poll_until_final (sans
