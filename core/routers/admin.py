@@ -259,6 +259,19 @@ async def admin_pawapay_balance():
     return {"balances": balances}
 
 
+@router.get("/pawapay/config", summary="Configuration du compte pawaPay (opérateurs, min/max)")
+async def admin_pawapay_config():
+    """Configuration active du compte marchand pawaPay (GET /v2/active-conf) :
+    opérateurs disponibles et montants min/max par opération (dépôt, payout,
+    remboursement). Admin uniquement. 503 si pawaPay injoignable."""
+    from aggregators.pawapay import client
+    conf = await client.fetch_active_conf()
+    if conf is None:
+        raise HTTPException(503, {"error": "pawapay_unavailable",
+                                  "message": "Impossible de récupérer la configuration pawaPay."})
+    return conf
+
+
 @router.get("/reconciliation", summary="Réconciliation Σ soldes apps + plateforme vs solde global DigiKUNTZ")
 async def admin_reconciliation():
     """Contrôle l'invariant comptable : Σ soldes apps + solde plateforme doit égaler

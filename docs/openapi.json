@@ -1932,6 +1932,53 @@
         }
       }
     },
+    "/admin/pawapay/config": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Configuration du compte pawaPay (opérateurs, min/max)",
+        "description": "Configuration active du compte marchand pawaPay (GET /v2/active-conf) :\nopérateurs disponibles et montants min/max par opération (dépôt, payout,\nremboursement). Admin uniquement. 503 si pawaPay injoignable.",
+        "operationId": "admin_pawapay_config_admin_pawapay_config_get",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/reconciliation": {
       "get": {
         "tags": [

@@ -232,6 +232,12 @@ async def fetch_balances() -> list | None:
     return None if body is None else body.get("balances", [])
 
 
+async def fetch_active_conf() -> dict | None:
+    """GET /v2/active-conf?country=... : configuration du compte marchand
+    (opérateurs actifs, montants min/max par opération). Réponse brute pawaPay."""
+    return await _get("/v2/active-conf", {"country": _pp.country})
+
+
 _NETWORK_NAMES = {"orange": "Orange Money", "mtn": "MTN Mobile Money"}
 
 
