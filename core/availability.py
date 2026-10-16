@@ -77,8 +77,6 @@ async def guard(aggregator: str, network: str, operation: str) -> str | None:
         raise HTTPException(400, {
             "code": "operation_not_enabled",
             "message": _NOT_ENABLED_MSG.get(operation, "Opération non activée sur ce réseau."),
-            "dev_message": (f"'{operation}' n'est pas activé sur le compte marchand "
-                            f"{aggregator} pour {network} : à demander à l'agrégateur."),
             "aggregator": aggregator, "network": network, "operation": operation,
             "operator_status": status,
         })
