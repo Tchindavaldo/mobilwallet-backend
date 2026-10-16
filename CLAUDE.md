@@ -11,6 +11,13 @@ Quand une commande, requête ou action nécessite la **validation de l'utilisate
 de cause. Les actions qui s'exécutent sans validation (mode automatique) ne
 s'annoncent PAS : pas de narration à chaque commande (perte de temps et de tokens).
 
+Comme on ne sait pas à l'avance quelle action déclenchera une demande de
+validation, expliquer TOUJOURS avant (une phrase : quoi + pourquoi) :
+- toute requête base de données (Supabase `execute_sql`, migrations) ;
+- toute fusion dans `main`, tout déploiement, toute action sur un service
+  externe (GitHub Actions, Fly, API de paiement) ;
+- en cas de doute sur la validation : expliquer.
+
 ## À lire en DÉBUT de session (OBLIGATOIRE)
 
 Lis **`ARCHITECTURE.md`** (à la racine) avant de travailler : il donne une vision
