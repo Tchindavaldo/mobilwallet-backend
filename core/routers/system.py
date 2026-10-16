@@ -76,7 +76,8 @@ async def aggregator_fees(
         net = fee_network(network)
         if not net:
             raise HTTPException(400, "network requis pour la simulation (MTN | Orangemoney)")
-        result["simulation"] = fees_info(amount, config, None, rates[f"{net}_deposit"])
+        result["simulation"] = fees_info(amount, config, None, rates[f"{net}_deposit"],
+                                         rates[f"{net}_payout"])
     return result
 
 
