@@ -97,6 +97,8 @@ class Settings:
     retry_window_s: int = field(default_factory=lambda: int(_env("RETRY_WINDOW_S", "960")))
     retry_window_orange_s: int = field(default_factory=lambda: int(_env("RETRY_WINDOW_ORANGE_S", "960")))
     retry_window_mtn_s: int = field(default_factory=lambda: int(_env("RETRY_WINDOW_MTN_S", "60")))
+    # Après un paiement RÉUSSI, délai court identique pour tous les réseaux.
+    retry_window_success_s: int = field(default_factory=lambda: int(_env("RETRY_WINDOW_SUCCESS_S", "60")))
 
     # Plafond de sécurité de la boucle de raisonnement navigateur (secondes).
     # INDÉPENDANT du délai anti-doublon : c'est juste un garde-fou pour que l'IA

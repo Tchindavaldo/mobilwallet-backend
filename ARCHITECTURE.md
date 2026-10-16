@@ -179,7 +179,8 @@ ai_browser2/
    - dernière `ussd_sent` (PIN pas encore tranché) → 409 pending_exists tant que la
      demande n'a pas expiré côté opérateur (17 min depuis `ussd_sent_at`) ;
    - dernière `cancelled` ou `failed` APRÈS envoi USSD (depuis `ussd_sent_at`), ou
-     `successful` (depuis `validated_at`) dans le délai anti-doublon → 409 retry_too_soon ;
+     `successful` (depuis `validated_at`, délai court RETRY_WINDOW_SUCCESS_S = 1 min
+     tous réseaux) dans le délai anti-doublon → 409 retry_too_soon ;
    - refus immédiat (`failed` sans USSD envoyé) / panne → relançable tout de suite.
 2. Insère la transaction `pending`, dispatch selon `mode` (auto/browser/replay) vers
    l'agrégateur (`pay_via_browser` ou `replay`).
