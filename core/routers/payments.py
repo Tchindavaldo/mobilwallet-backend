@@ -4,7 +4,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core import registry, runtime
+from core import availability, registry, runtime
 from core.auth import AuthContext, require_api_key
 from core.base import PaymentRequest, PaymentResult
 from core.notifications import notify_settled
@@ -305,6 +305,7 @@ async def _execute_direct(cls, req, app_id, api_key_id, debug, app_name):
         email=req.email, sender_name=label, callback_url=req.callback_url, raison=label,
     )
     await _guard_duplicate(req)
+    await availability.guard(req.aggregator, canonical_network, "deposit")
     tx_id = await db.insert_pending(
         req.aggregator, "api", payment,
         app_id=app_id, api_key_id=api_key_id, end_user_ref=req.end_user_ref,

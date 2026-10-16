@@ -107,6 +107,7 @@ FastAPI génère automatiquement la doc OpenAPI :
 | POST | `/pay` | exécuter un paiement (encaissement) |
 | POST | `/payout` | effectuer un virement (retrait), débité du solde de l'app |
 | GET | `/balance` | solde courant de votre app (XAF) |
+| GET | `/availability?aggregator=pawapay` | état des opérateurs (OPERATIONAL / DELAYED / CLOSED). `/pay` et `/payout` renvoient 503 `operator_unavailable` si DELAYED ou CLOSED |
 | POST | `/transactions/{tx_id}/cancel` | débloquer une transaction `pending` |
 | GET/PUT | `/config/max-tabs` | seuil d'onglets par navigateur (concurrence) |
 

@@ -238,6 +238,15 @@ async def fetch_active_conf() -> dict | None:
     return await _get("/v2/active-conf", {"country": _pp.country})
 
 
+async def fetch_availability(operation: str | None = None) -> list | None:
+    """GET /v2/availability?country=... : état temps réel de chaque opérateur
+    (OPERATIONAL / DELAYED / CLOSED) par type d'opération. Réponse brute pawaPay."""
+    params = {"country": _pp.country}
+    if operation:
+        params["operationType"] = operation
+    return await _get("/v2/availability", params)
+
+
 _NETWORK_NAMES = {"orange": "Orange Money", "mtn": "MTN Mobile Money"}
 
 

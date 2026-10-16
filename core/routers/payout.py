@@ -16,7 +16,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from core import registry, tenants
+from core import availability, registry, tenants
 from core.auth import AuthContext, require_api_key
 from core.config import settings
 from core import settlement, status_check
@@ -105,6 +105,7 @@ async def _execute_payout(
     """Logique partagée d'exécution payout (réutilisée par /payout ET admin)."""
     _validate_payout_aggregator_and_network(req)
     await _guard_duplicate_payout(req)
+    await availability.guard(req.aggregator, req.account_bank_code, "payout")
 
     # Mode mock : court-circuite DigiKUNTZ (garde quand même la compta réelle).
     if settings.mock_payments:
@@ -217,6 +218,7 @@ async def execute_platform_payout(
     """Exécute un payout débité du solde PLATEFORME (pas d'une app)."""
     _validate_payout_aggregator_and_network(req)
     await _guard_duplicate_payout(req)
+    await availability.guard(req.aggregator, req.account_bank_code, "payout")
 
     if settings.mock_payments:
         return await _platform_payout_mock(req, debug)
