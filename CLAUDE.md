@@ -3,13 +3,13 @@
 Ce fichier est **versionné** : ses règles s'appliquent automatiquement sur tout
 PC où le projet est cloné/pull, dans n'importe quelle session Claude Code.
 
-## Annoncer chaque action AVANT de la lancer (OBLIGATOIRE)
+## Expliquer une action quand elle demande l'accord de l'utilisateur (OBLIGATOIRE)
 
-Avant CHAQUE commande, requête ou appel d'outil (Bash, SQL Supabase, API,
-GitHub Actions, déploiement…), dire en une phrase claire à l'utilisateur
-**ce qu'on va faire et pourquoi** (ex. « Je lis la transaction 282 en lecture
-seule pour voir qui a tranché le paiement »). Jamais de commande lancée sans
-explication préalable : l'utilisateur doit pouvoir comprendre et refuser.
+Quand une commande, requête ou action nécessite la **validation de l'utilisateur**
+(demande de permission, accord explicite), dire juste avant, en une phrase claire,
+**ce que fait cette action et pourquoi**, pour qu'il puisse décider en connaissance
+de cause. Les actions qui s'exécutent sans validation (mode automatique) ne
+s'annoncent PAS : pas de narration à chaque commande (perte de temps et de tokens).
 
 ## À lire en DÉBUT de session (OBLIGATOIRE)
 
