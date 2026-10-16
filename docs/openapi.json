@@ -1545,6 +1545,78 @@
         }
       }
     },
+    "/pay/minimum": {
+      "get": {
+        "tags": [
+          "availability"
+        ],
+        "summary": "Montant minimum (et maximum) d'un dépôt",
+        "description": "`min` : en dessous, /pay et /pay/page refusent (422 amount_too_low).\nC'est le plus grand entre le minimum de l'agrégateur et le nôtre (montant qui\nlaisse au moins 1 F à votre app après frais, commission et réserve de\npayout, tous arrondis au franc supérieur). Recalculé selon la config.",
+        "operationId": "deposit_minimum_pay_minimum_get",
+        "parameters": [
+          {
+            "name": "aggregator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "pawapay",
+              "title": "Aggregator"
+            }
+          },
+          {
+            "name": "network",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "MTN | Orange ; vide = page de paiement",
+              "title": "Network"
+            },
+            "description": "MTN | Orange ; vide = page de paiement"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Agrégateur inconnu."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/operators/predict": {
       "post": {
         "tags": [

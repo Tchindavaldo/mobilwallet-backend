@@ -6,7 +6,7 @@ classique (core.settlement) ; réseau et numéro sont complétés à ce moment-l
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from core import aggregator_ops, registry, status_check
+from core import aggregator_ops, deposit_limits, registry, status_check
 from core.auth import AuthContext, require_api_key
 from core.base import PaymentRequest
 from core.db import db
@@ -35,6 +35,7 @@ async def payment_page(req: PaymentPageRequest, ctx: AuthContext = Depends(requi
         raise HTTPException(404, {"error": "unknown_aggregator",
                                   "supported_aggregators": registry.names()})
     aggregator_ops.get(req.aggregator, "create_payment_page")
+    await deposit_limits.check(req.aggregator, None, req.amount, ctx.app_id)
     app_name = ctx.app_name
     label = req.description or (f"MobileWallet {app_name}" if app_name else "MobileWallet")
     payment = PaymentRequest(amount=req.amount, phone=req.phone, network="",

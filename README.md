@@ -109,6 +109,7 @@ FastAPI génère automatiquement la doc OpenAPI :
 | GET | `/payout/quote` | devis : frais débités du solde (0 si couverts par la réserve du réseau), solde après |
 | GET | `/balance` | solde courant de votre app (XAF) |
 | GET | `/availability?aggregator=pawapay` | état des opérateurs (OPERATIONAL / DELAYED / CLOSED). `/pay` et `/payout` renvoient 503 `operator_unavailable` si CLOSED ; payout DELAYED accepté (file d attente) |
+| GET | `/pay/minimum?aggregator=pawapay&network=MTN` | montant min/max d'un dépôt (réseau vide = page de paiement) ; en dessous, /pay et /pay/page répondent 422 `amount_too_low` |
 | POST | `/operators/predict` | numéro libre -> format international + opérateur |
 | POST | `/pay/page` | page de paiement hébergée (pawaPay) -> `redirect_url` |
 | POST | `/payout/bulk` | jusqu'à 20 virements en un appel, résultat par élément |

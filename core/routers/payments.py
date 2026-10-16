@@ -4,7 +4,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core import availability, registry, runtime
+from core import availability, deposit_limits, registry, runtime
 from core.auth import AuthContext, require_api_key
 from core.base import PaymentRequest, PaymentResult
 from core.notifications import notify_settled
@@ -195,6 +195,7 @@ async def _execute_payment(
     )
 
     await _guard_duplicate(req)
+    await deposit_limits.check(req.aggregator, canonical_network, req.amount, app_id)
 
     async def _run_browser_and_save():
         res = await agg.pay_via_browser(payment, tx_id=tx_id)
@@ -305,6 +306,7 @@ async def _execute_direct(cls, req, app_id, api_key_id, debug, app_name):
         email=req.email, sender_name=label, callback_url=req.callback_url, raison=label,
     )
     await _guard_duplicate(req)
+    await deposit_limits.check(req.aggregator, canonical_network, req.amount, app_id)
     await availability.guard(req.aggregator, canonical_network, "deposit")
     tx_id = await db.insert_pending(
         req.aggregator, "api", payment,

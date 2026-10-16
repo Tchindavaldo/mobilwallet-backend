@@ -33,7 +33,7 @@ ai_browser2/
 │   ├── runtime.py                État partagé entre routers (browser/llm vivants) + helpers
 │   │                             transverses (seconds_since, fmt_duration).
 │   ├── routers/                  UN APIRouter PAR DOMAINE (logique des endpoints) :
-│   │   ├── availability.py       GET /availability (état des opérateurs) + POST /operators/predict.
+│   │   ├── availability.py       GET /availability (état des opérateurs), GET /pay/minimum (min/max d'un dépôt) + POST /operators/predict.
 │   │   ├── payout_ops.py         POST /payout/bulk (≤20, un appel agrégateur) + POST /payout/{ref}/cancel.
 │   │   ├── payment_page.py       POST /pay/page : page de paiement hébergée -> redirect_url.
 │   │   ├── system.py             /health, /aggregators, /config/max-tabs.
@@ -97,6 +97,7 @@ ai_browser2/
 │   │                             brut → frais agrégateur (selon fee_payer) → commission MW → app + plateforme.
 │   ├── aggregator_ops.py         Accès neutre aux opérations optionnelles (aggregators.<nom>.operations).
 │   ├── availability.py           Dispo opérateurs (neutre) : list + guard 503 sur /pay et /payout si CLOSED (DELAYED = payout en file).
+│   ├── deposit_limits.py         Min/max d'un dépôt (neutre) : notre min (reste >= 1 F à l'app après frais, commission, réserve) et celui de l'agrégateur ; 422 sur /pay et /pay/page.
 │   ├── status_check.py           Vérif. manuelle chez l'agrégateur (1 appel, payin/payout) -> settle_verdict.
 │   ├── treasury.py               Soldes réels, réconciliation, reversement auto (réserve libérée + surplus d'arrondi) à la plateforme.
 │   ├── settlement.py             Imputation en compta (commune à tous les agrégateurs) : credit_payin,
@@ -151,6 +152,7 @@ ai_browser2/
 │   └── pawapay/                  Agrégateur « API directe » (Merchant API v2, Bearer token) :
 │       ├── operations.py         predict-provider, resend-callback, fail-enqueued, payouts/bulk, paymentpage.
 │       ├── availability.py       GET /v2/availability (cache 60 s) -> état par réseau/opération.
+│       ├── limits.py             GET /v2/active-conf (cache 10 min) -> min/max par réseau et opération.
 │       ├── status_check.py       check_deposit_status : 1 appel GET /v2/deposits/{id} à la demande.
 │       ├── client.py             HTTP pawaPay : initiate_deposit/payout, fetch_status, soldes,
 │       │                         mapping statuts (COMPLETED/FAILED/… -> interne), MSISDN 237…,
