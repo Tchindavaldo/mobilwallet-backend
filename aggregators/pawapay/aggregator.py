@@ -65,8 +65,8 @@ class PawapayAggregator(Aggregator):
             result.final_status = "error"
             return result
         result.payment_status = init["raw"]
-        result.flutterwave_charge_body = str(init["body"])[:5000]
-        result.flutterwave_charge_response = str(init["response"])[:5000]
+        result.provider_charge_body = str(init["body"])[:5000]
+        result.provider_charge_response = str(init["response"])[:5000]
         log.info("pawapay deposit %s: %s -> %s", deposit_id, init["raw"], init["internal"])
 
         if init["internal"] == "pending":

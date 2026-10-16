@@ -111,6 +111,8 @@ ai_browser2/
 │       │                         S'ARRÊTE dès l'USSD demandé), decide_browser_outcome (pose
 │       │                         poll_after_close, tab fermée), finalize_after_close (polling
 │       │                         verify HORS navigateur), _interpret/_friendly.
+│       ├── checkout_matchers.py  Reconnaît les requêtes /charge et /verify du checkout Flutterwave
+│       │                         embarqué par DigiKUNTZ (hors de core/, qui reste neutre).
 │       ├── status_poll.py        Polling statut DigiKUNTZ (GET {base}/transaction?transactionId=) :
 │       │                         source de vérité du verdict après USSD. payin_* -> interne, poll
 │       │                         jusqu'à un verdict terminal (sans timeout : l'opérateur tranche toujours). 0 token.

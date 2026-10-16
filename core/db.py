@@ -241,7 +241,7 @@ class Database(LedgerMixin):
             "status": final_status,
             "message": result.final_message,
             "success": result.success,
-            "charge_response": result.flutterwave_charge_response[:5000],
+            "charge_response": result.provider_charge_response[:5000],
             "error_signals": result.error_signals,
         }
         # Trace QUI a settlé (polling/webhook). None pour un verdict hors course

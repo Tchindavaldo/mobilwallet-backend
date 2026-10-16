@@ -64,7 +64,7 @@ def build_errors(result: PaymentResult, engine: str) -> list[dict]:
                 "source": "replay",
                 "category": "flow_error",
                 "message": result.error,
-                "detail": {"charge_response": result.flutterwave_charge_response[:2000]},
+                "detail": {"charge_response": result.provider_charge_response[:2000]},
                 "turn": None,
             })
         elif is_failure:
@@ -75,7 +75,7 @@ def build_errors(result: PaymentResult, engine: str) -> list[dict]:
                     result.final_message, _STATUS_CATEGORY.get(status, "error")
                 ),
                 "message": result.final_message or status,
-                "detail": {"charge_response": result.flutterwave_charge_response[:2000]},
+                "detail": {"charge_response": result.provider_charge_response[:2000]},
                 "turn": None,
             })
         return errors

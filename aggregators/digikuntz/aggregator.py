@@ -9,14 +9,14 @@ import json
 import logging
 
 from core.base import Aggregator, CurlTemplate, PaymentRequest, PaymentResult
-from core.browser import CapturedRequest, BrowserSession
+from core.browser import CapturedRequest
 from core.browser_runner import run_browser_flow
 from core.config import settings
 from core.upstream_errors import classify_upstream_error
 from core.registry import register
 
 from . import browser_flow
-from . import replay_flow
+from . import checkout_matchers, replay_flow
 
 log = logging.getLogger("ai_browser2")
 
@@ -55,10 +55,10 @@ class DigikuntzAggregator(Aggregator):
         return replay_flow.network_label(network)
 
     def charge_request_matcher(self, r: CapturedRequest) -> bool:
-        return BrowserSession._flutterwave_charge_matcher(r)
+        return checkout_matchers.is_charge_request(r)
 
     def verify_request_matcher(self, r: CapturedRequest) -> bool:
-        return BrowserSession._flutterwave_verify_matcher(r)
+        return checkout_matchers.is_verify_request(r)
 
     def checkout_url_predicate(self, url: str) -> bool:
         """True while the URL is still on the Flutterwave checkout (not redirected)."""
@@ -185,7 +185,7 @@ class DigikuntzAggregator(Aggregator):
             cfg=cfg,
         )
         charge_resp = charge.get("charge_response", {})
-        result.flutterwave_charge_response = str(charge_resp)[:1000]
+        result.provider_charge_response = str(charge_resp)[:1000]
 
         verdict = self.interpret_status("charge", charge_resp, req.network)
         if verdict:

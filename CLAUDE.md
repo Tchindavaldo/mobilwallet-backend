@@ -37,6 +37,20 @@ L'architecture doit rester **propre, moderne, modulaire**. Règles non négociab
 - Toute nouvelle route/évolution s'ajoute **dans le module de son domaine**, pas
   dans un fichier déjà gros.
 
+### Multi-agrégateur : `core/` est neutre (OBLIGATOIRE)
+
+Le projet gère **plusieurs agrégateurs** (DigiKUNTZ, pawaPay, d'autres à venir).
+Rien de commun ne doit porter le nom ou la logique d'un prestataire :
+
+- Dans `core/` (modèles `PaymentResult`, schémas d'API, colonnes BD, routes,
+  navigateur…), **aucun nom de prestataire** (`flutterwave_*`, `pawapay_*`,
+  `digikuntz_*`). On utilise des noms génériques : `provider_charge_*`,
+  `provider_transaction_id`, `charge_response`…
+- Tout ce qui est propre à un prestataire (matchers d'URL, mapping de statuts,
+  messages, appels HTTP) vit **dans `aggregators/<nom>/`**, jamais dans `core/`.
+- Avant d'ajouter un champ/une colonne commune, vérifier qu'il a un sens pour
+  TOUS les agrégateurs ; sinon il reste dans le dossier de l'agrégateur.
+
 ### Objectif : une arborescence lisible d'un coup d'œil
 
 Le critère : en ouvrant un dossier, on doit **comprendre immédiatement**

@@ -10,7 +10,7 @@ from core.browser import BrowserController
 from core.llm_client import LlmClient
 from core import classifier
 from . import status_poll
-from . import replay_flow
+from . import checkout_matchers, replay_flow
 
 log = logging.getLogger("ai_browser2")
 
@@ -201,7 +201,7 @@ class DigikuntzAgent:
                 # Instant de l'envoi USSD = horodatage de la requête /charge
                 # capturée (c'est elle qui déclenche le push USSD). Base du calcul
                 # anti-doublon (la fenêtre opérateur court depuis là).
-                charge_req = sb.get_flutterwave_charge()
+                charge_req = sb.get_charge_request(checkout_matchers.is_charge_request)
                 if charge_req and getattr(charge_req, "timestamp", 0):
                     result.ussd_sent_at = charge_req.timestamp
                 log.info("USSD demandé — navigateur fermé, polling verify différé "
@@ -231,7 +231,7 @@ class DigikuntzAgent:
             return
 
         # Cas 4 — pas de conclusion nette : dernier recours LLM sur le texte/charge.
-        charge_req = sb.get_flutterwave_charge()
+        charge_req = sb.get_charge_request(checkout_matchers.is_charge_request)
         charge_body = charge_req.response_body if charge_req else ""
         combined = "\n".join(filter(None, [
             f"Message lu par l'agent: {agent_message}" if agent_message else "",
