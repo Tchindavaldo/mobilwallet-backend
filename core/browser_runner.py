@@ -190,9 +190,9 @@ async def _run_browser_flow_in_session(
     # 7. Capture charge + verify requests (the deduced curl replay).
     charge_req = browser.get_charge_request(aggregator.charge_request_matcher)
     if charge_req:
-        result.flutterwave_charge_url = charge_req.url
-        result.flutterwave_charge_body = charge_req.request_body
-        result.flutterwave_charge_response = charge_req.response_body[:1000]
+        result.provider_charge_url = charge_req.url
+        result.provider_charge_body = charge_req.request_body
+        result.provider_charge_response = charge_req.response_body[:1000]
         result.curl_replay = charge_req.to_curl()
     verify_reqs = browser.get_verify_requests(aggregator.verify_request_matcher)
     if verify_reqs:

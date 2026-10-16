@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 
-from core import runtime
+from core import registry, runtime
 from core.schemas.dev import DriveRequest
 
 router = APIRouter()
@@ -27,7 +27,12 @@ async def drive(req: DriveRequest):
         loop = ReasoningLoop(session, llm, max_turns=15)
         result = await loop.run(req.objective)
         captured = session.stop_capture()
-        charge = session.get_flutterwave_charge()
+        charge = None
+        for name in registry.names():
+            agg = registry.get(name)(browser, llm)
+            charge = session.get_charge_request(agg.charge_request_matcher)
+            if charge:
+                break
 
         return {
             "success": result.success,
@@ -36,7 +41,7 @@ async def drive(req: DriveRequest):
             "turns": result.turns,
             "input_tokens": result.total_input_tokens,
             "output_tokens": result.total_output_tokens,
-            "flutterwave_charge": {
+            "charge": {
                 "url": charge.url if charge else "",
                 "method": charge.method if charge else "",
                 "request_body": charge.request_body if charge else "",

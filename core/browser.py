@@ -374,28 +374,6 @@ class BrowserSession:
         predicate). Generic — each aggregator supplies its own matcher."""
         return [r for r in self.captured_requests if matcher(r)]
 
-    # --- Flutterwave default matchers (used by DigiKUNTZ; thin wrappers over the
-    #     generic methods above so legacy callers keep working). ---
-    @staticmethod
-    def _flutterwave_charge_matcher(r: "CapturedRequest") -> bool:
-        return (
-            r.method == "POST"
-            and ("flutterwave" in r.url or "ravepay" in r.url)
-            and "/charge" in r.url
-        )
-
-    @staticmethod
-    def _flutterwave_verify_matcher(r: "CapturedRequest") -> bool:
-        return r.method == "POST" and "ravepay" in r.url and "/verify/" in r.url
-
-    def get_flutterwave_charge(self) -> CapturedRequest | None:
-        """Find the Flutterwave charge POST request in captured requests."""
-        return self.get_charge_request(self._flutterwave_charge_matcher)
-
-    def get_flutterwave_verify_requests(self) -> list[CapturedRequest]:
-        """Find all Flutterwave verify/mpesa polling requests."""
-        return self.get_verify_requests(self._flutterwave_verify_matcher)
-
     async def _on_response(self, response: Response):
         """Callback for every network response."""
         if not self._capture_enabled:

@@ -61,9 +61,9 @@ class PayResponseDebug(PayResponse):
     turns: int = Field(0, description="Nombre de tours de l'agent IA (mode browser).")
     input_tokens: int = 0
     output_tokens: int = 0
-    flutterwave_charge_url: str = ""
-    flutterwave_charge_body: str = ""
-    flutterwave_charge_response: str = ""
+    provider_charge_url: str = ""
+    provider_charge_body: str = ""
+    provider_charge_response: str = ""
     curl_replay: str = Field("", description="Commande curl reproductible déduite.")
     plaintext_payload: str = ""
     public_key: str = ""

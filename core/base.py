@@ -41,9 +41,9 @@ class PaymentResult:
     input_tokens: int = 0
     output_tokens: int = 0
     # Captured charge request (the deduced curl replay)
-    flutterwave_charge_url: str = ""
-    flutterwave_charge_body: str = ""
-    flutterwave_charge_response: str = ""
+    provider_charge_url: str = ""
+    provider_charge_body: str = ""
+    provider_charge_response: str = ""
     curl_replay: str = ""
     # Plaintext data BEFORE encryption
     plaintext_payload: str = ""
