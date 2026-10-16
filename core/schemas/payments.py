@@ -54,6 +54,8 @@ class PayResponse(BaseModel):
     message: str = Field("", description="Message clair pour l'utilisateur final.")
     transaction_id: str = Field("", description="Référence transaction de l'agrégateur.")
     code: int = Field(200, description="Code HTTP de la réponse (200 si OK).")
+    ussd_code: str | None = Field(None, description="Si ussd_sent : code USSD à composer "
+                                  "pour valider si la demande de PIN n'arrive pas (ex. *126#).")
 
 
 class PayResponseDebug(PayResponse):

@@ -163,7 +163,7 @@ def _settle(result: PaymentResult | None, engine_used: str) -> PaymentResult:
     return result
 
 
-def _render_response(result: PaymentResult, debug: bool):
+def _render_response(result: PaymentResult, debug: bool, ussd_code: str | None = None):
     """Construit la réponse client (défaut) ou admin/debug (?debug=true)."""
     client_status = result.final_status or result.payment_status or ""
     client = PayResponse(
@@ -172,6 +172,7 @@ def _render_response(result: PaymentResult, debug: bool):
         message=result.final_message or result.error,
         transaction_id=result.transaction_id,
         code=200,  # 503 (panne amont) est levé via HTTPException avant ici.
+        ussd_code=ussd_code if client_status == "ussd_sent" else None,
     )
     if not debug:
         return client

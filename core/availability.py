@@ -6,7 +6,8 @@ Chaque agrégateur qui publie l'état de ses opérateurs expose
 
 - `list_availability` : pour l'endpoint dédié GET /availability.
 - `guard` : appelé par /pay et /payout ; refuse (503) une opération dont
-  l'opérateur est CLOSED ; DELAYED passe (file d'attente) avec avertissement.
+  l'opérateur est CLOSED, 400 si l'opération est NOT_ENABLED (non activée sur
+  le compte marchand) ; DELAYED passe (file d'attente) avec avertissement.
   FAIT publié par l'agrégateur, pas un
   verdict de paiement. Agrégateur sans ce module ou injoignable -> on laisse passer.
 """
@@ -60,10 +61,27 @@ async def operator_status(aggregator: str, network: str, operation: str) -> str 
     return None
 
 
+_NOT_ENABLED_MSG = {
+    "deposit": "Les paiements ne sont pas encore activés sur ce réseau. Utilisez un autre réseau.",
+    "payout": "Les retraits ne sont pas encore activés sur ce réseau.",
+    "refund": "Les remboursements ne sont pas encore activés sur ce réseau.",
+}
+
+
 async def guard(aggregator: str, network: str, operation: str) -> str | None:
-    """Lève 503 operator_unavailable si l'opérateur est CLOSED. Retourne le
-    statut (ex. DELAYED pour prévenir le client), ou None si inconnu."""
+    """Lève 400 operation_not_enabled si l'opération n'est pas activée sur le
+    compte marchand, 503 operator_unavailable si l'opérateur est CLOSED.
+    Retourne le statut (ex. DELAYED pour prévenir le client), ou None si inconnu."""
     status = await operator_status(aggregator, network, operation)
+    if status == "NOT_ENABLED":
+        raise HTTPException(400, {
+            "code": "operation_not_enabled",
+            "message": _NOT_ENABLED_MSG.get(operation, "Opération non activée sur ce réseau."),
+            "dev_message": (f"'{operation}' n'est pas activé sur le compte marchand "
+                            f"{aggregator} pour {network} : à demander à l'agrégateur."),
+            "aggregator": aggregator, "network": network, "operation": operation,
+            "operator_status": status,
+        })
     if status in _BLOCKING:
         log.warning("Opérateur %s indisponible (%s, %s) : %s refusé",
                     network, aggregator, status, operation)

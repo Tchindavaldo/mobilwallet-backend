@@ -4,7 +4,7 @@ Minimum = le plus grand de :
   - notre minimum : plus petit montant qui laisse au moins 1 XAF à l'app une
     fois retirés frais de dépôt, commission MobileWallet et réserve de payout
     (tous arrondis à l'excès) -> recalculé depuis la config en BD ;
-  - le minimum publié par l'agrégateur (`aggregators.<nom>.limits`, optionnel).
+  - le minimum publié par l'agrégateur (`aggregators.<nom>.account_conf`, optionnel).
 Maximum = celui de l'agrégateur s'il en publie un.
 `check` est appelé par /pay et /pay/page AVANT tout appel à l'agrégateur.
 """
@@ -25,7 +25,7 @@ _SEARCH_MAX = 100_000
 
 async def _provider_limits(aggregator: str) -> dict:
     try:
-        mod = importlib.import_module(f"aggregators.{aggregator}.limits")
+        mod = importlib.import_module(f"aggregators.{aggregator}.account_conf")
     except ModuleNotFoundError:
         return {}
     try:

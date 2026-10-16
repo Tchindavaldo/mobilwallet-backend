@@ -77,3 +77,10 @@ async def create_payment_page(amount: int, label: str, return_url: str,
     r = await client._post("/v2/paymentpage", body)
     return {"provider_id": deposit_id, "redirect_url": r.get("redirectUrl"),
             "failure": r.get("failureReason"), "raw": r}
+
+
+async def ussd_code(network: str) -> str | None:
+    """Code USSD de secours (valider le PIN si la demande n'arrive pas)."""
+    from aggregators.pawapay import account_conf
+    from core.fees import fee_network
+    return await account_conf.ussd_code(fee_network(network), "DEPOSIT")

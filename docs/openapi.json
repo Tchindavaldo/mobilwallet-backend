@@ -3636,6 +3636,18 @@
             "title": "Code",
             "description": "Code HTTP de la réponse (200 si OK).",
             "default": 200
+          },
+          "ussd_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ussd Code",
+            "description": "Si ussd_sent : code USSD à composer pour valider si la demande de PIN n'arrive pas (ex. *126#)."
           }
         },
         "type": "object",

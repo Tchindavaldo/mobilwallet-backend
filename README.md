@@ -108,7 +108,7 @@ FastAPI génère automatiquement la doc OpenAPI :
 | POST | `/payout` | effectuer un virement (retrait), débité du solde de l'app ; renvoie `fee` et `total_debited` |
 | GET | `/payout/quote` | devis : frais débités du solde (0 si couverts par la réserve du réseau), solde après |
 | GET | `/balance` | solde courant de votre app (XAF) |
-| GET | `/availability?aggregator=pawapay` | état des opérateurs (OPERATIONAL / DELAYED / CLOSED). `/pay` et `/payout` renvoient 503 `operator_unavailable` si CLOSED ; payout DELAYED accepté (file d attente) |
+| GET | `/availability?aggregator=pawapay` | état des opérateurs (OPERATIONAL / DELAYED / CLOSED / NOT_ENABLED = non activé sur le compte marchand, refus 400 `operation_not_enabled`). `/pay` et `/payout` renvoient 503 `operator_unavailable` si CLOSED ; payout DELAYED accepté (file d attente) |
 | GET | `/pay/minimum?aggregator=pawapay&network=MTN` | montant min/max d'un dépôt (réseau vide = page de paiement) ; en dessous, /pay et /pay/page répondent 422 `amount_too_low` |
 | POST | `/operators/predict` | numéro libre -> format international + opérateur |
 | POST | `/pay/page` | page de paiement hébergée (pawaPay) -> `redirect_url` |
@@ -173,7 +173,7 @@ FastAPI génère automatiquement la doc OpenAPI :
 - `replay` — rejoue via le template stocké. **409** si aucun template (lancer `browser` d'abord).
 
 > **Mode mock** (`MOCK_PAYMENTS=true`) — `/pay` simule un paiement sans appeler DigiKUNTZ :
-> réponse `ussd_sent` immédiate, puis verdict final (`successful`/`cancelled`) après un court
+> réponse `ussd_sent` immédiate (avec `ussd_code` : code à composer si la demande de PIN n'arrive pas, ex. `*126#` pour MTN), puis verdict final (`successful`/`cancelled`) après un court
 > délai, poussé normalement via **Socket.IO + webhook**. Utile pour développer/tester quand
 > DigiKUNTZ est indisponible. Implémenté dans `core/mock_aggregator.py`.
 

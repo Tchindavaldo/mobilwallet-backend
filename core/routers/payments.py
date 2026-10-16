@@ -4,7 +4,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core import availability, deposit_limits, registry, runtime
+from core import aggregator_ops, availability, deposit_limits, registry, runtime
 from core.auth import AuthContext, require_api_key
 from core.base import PaymentRequest, PaymentResult
 from core.notifications import notify_settled
@@ -334,7 +334,15 @@ async def _execute_direct(cls, req, app_id, api_key_id, debug, app_name):
     if result.error_code in UPSTREAM_CODES:
         raise HTTPException(
             503, {"code": result.error_code, "message": UPSTREAM_MESSAGES[result.error_code]})
-    return _render_response(result, debug)
+    return _render_response(result, debug, await _ussd_code(req.aggregator, canonical_network))
+
+
+async def _ussd_code(aggregator: str, network: str) -> str | None:
+    """Code USSD de secours publié par l'agrégateur (optionnel)."""
+    try:
+        return await aggregator_ops.get(aggregator, "ussd_code")(network)
+    except Exception:  # noqa: BLE001 — agrégateur sans cette info / injoignable
+        return None
 
 
 async def _finalize_in_background(agg, payment, result, tx_id, req, engine_used,

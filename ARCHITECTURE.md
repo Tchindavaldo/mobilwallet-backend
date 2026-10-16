@@ -96,7 +96,7 @@ ai_browser2/
 │   ├── fees.py                   Calcul PUR de ventilation (compute_fees / fees_info / fee_payer) :
 │   │                             brut → frais agrégateur (selon fee_payer) → commission MW → app + plateforme.
 │   ├── aggregator_ops.py         Accès neutre aux opérations optionnelles (aggregators.<nom>.operations).
-│   ├── availability.py           Dispo opérateurs (neutre) : list + guard 503 sur /pay et /payout si CLOSED (DELAYED = payout en file).
+│   ├── availability.py           Dispo opérateurs (neutre) : list + guard 503 sur /pay et /payout si CLOSED, 400 si NOT_ENABLED (DELAYED = payout en file).
 │   ├── deposit_limits.py         Min/max d'un dépôt (neutre) : notre min (reste >= 1 F à l'app après frais, commission, réserve) et celui de l'agrégateur ; 422 sur /pay et /pay/page.
 │   ├── status_check.py           Vérif. manuelle chez l'agrégateur (1 appel, payin/payout) -> settle_verdict.
 │   ├── treasury.py               Soldes réels, réconciliation, reversement auto (réserve libérée + surplus d'arrondi) à la plateforme.
@@ -151,8 +151,8 @@ ai_browser2/
 │                                 registre webhook⇄polling). Aucun navigateur/LLM/Flutterwave.
 │   └── pawapay/                  Agrégateur « API directe » (Merchant API v2, Bearer token) :
 │       ├── operations.py         predict-provider, resend-callback, fail-enqueued, payouts/bulk, paymentpage.
-│       ├── availability.py       GET /v2/availability (cache 60 s) -> état par réseau/opération.
-│       ├── limits.py             GET /v2/active-conf (cache 10 min) -> min/max par réseau et opération.
+│       ├── availability.py       GET /v2/availability (cache 60 s) -> état par réseau/opération, NOT_ENABLED si non activé sur le compte.
+│       ├── account_conf.py       GET /v2/active-conf (cache 10 min) : opérations activées sur le compte, min/max, code USSD de secours.
 │       ├── status_check.py       check_deposit_status : 1 appel GET /v2/deposits/{id} à la demande.
 │       ├── client.py             HTTP pawaPay : initiate_deposit/payout, fetch_status, soldes,
 │       │                         mapping statuts (COMPLETED/FAILED/… -> interne), MSISDN 237…,
