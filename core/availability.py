@@ -6,7 +6,8 @@ Chaque agrégateur qui publie l'état de ses opérateurs expose
 
 - `list_availability` : pour l'endpoint dédié GET /availability.
 - `guard` : appelé par /pay et /payout ; refuse (503) une opération dont
-  l'opérateur n'est pas OPERATIONAL. FAIT publié par l'agrégateur, pas un
+  l'opérateur est CLOSED ; DELAYED passe (file d'attente) avec avertissement.
+  FAIT publié par l'agrégateur, pas un
   verdict de paiement. Agrégateur sans ce module ou injoignable -> on laisse passer.
 """
 
@@ -17,7 +18,12 @@ from fastapi import HTTPException
 
 log = logging.getLogger("ai_browser2")
 
-_BLOCKING = ("CLOSED", "DELAYED")
+# Doc pawaPay : CLOSED = demandes rejetées (dépôts, payouts, refunds) ;
+# DELAYED = payouts/refunds mis en file d'attente, exécutés plus tard (pas un refus).
+_BLOCKING = ("CLOSED",)
+DELAYED_MESSAGE = ("Virement accepté mais mis en file d'attente : l'opérateur a un "
+                   "problème temporaire. Il sera envoyé dès son rétablissement "
+                   "(annulable via POST /payout/{ref}/cancel).")
 
 
 def _module(aggregator: str):
@@ -44,8 +50,9 @@ async def operator_status(aggregator: str, network: str, operation: str) -> str 
     return None
 
 
-async def guard(aggregator: str, network: str, operation: str) -> None:
-    """Lève 503 operator_unavailable si l'opérateur est DELAYED ou CLOSED."""
+async def guard(aggregator: str, network: str, operation: str) -> str | None:
+    """Lève 503 operator_unavailable si l'opérateur est CLOSED. Retourne le
+    statut (ex. DELAYED pour prévenir le client), ou None si inconnu."""
     status = await operator_status(aggregator, network, operation)
     if status in _BLOCKING:
         log.warning("Opérateur %s indisponible (%s, %s) : %s refusé",
@@ -60,3 +67,4 @@ async def guard(aggregator: str, network: str, operation: str) -> None:
             "aggregator": aggregator, "network": network,
             "operation": operation, "operator_status": status,
         })
+    return status

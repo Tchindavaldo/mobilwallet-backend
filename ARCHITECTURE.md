@@ -95,7 +95,7 @@ ai_browser2/
 │   ├── fees.py                   Calcul PUR de ventilation (compute_fees / fees_info / fee_payer) :
 │   │                             brut → frais agrégateur (selon fee_payer) → commission MW → app + plateforme.
 │   ├── aggregator_ops.py         Accès neutre aux opérations optionnelles (aggregators.<nom>.operations).
-│   ├── availability.py           Dispo opérateurs (neutre) : list + guard 503 sur /pay et /payout si DELAYED/CLOSED.
+│   ├── availability.py           Dispo opérateurs (neutre) : list + guard 503 sur /pay et /payout si CLOSED (DELAYED = payout en file).
 │   ├── status_check.py           Vérif. manuelle chez l'agrégateur (1 appel, payin/payout) -> settle_verdict.
 │   ├── settlement.py             Imputation en compta (commune à tous les agrégateurs) : credit_payin,
 │   │                             payout_charges, refund_payout, settle_verdict (verdict terminal -> BD + compta + notif).

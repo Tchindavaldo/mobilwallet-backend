@@ -105,8 +105,14 @@ async def _execute_payout(
     """Logique partagée d'exécution payout (réutilisée par /payout ET admin)."""
     _validate_payout_aggregator_and_network(req)
     await _guard_duplicate_payout(req)
-    await availability.guard(req.aggregator, req.account_bank_code, "payout")
+    op_status = await availability.guard(req.aggregator, req.account_bank_code, "payout")
+    resp = await _run_payout(req, app_id, api_key_id, debug)
+    if op_status == "DELAYED" and isinstance(resp, PayoutResponse) and resp.status == "pending":
+        resp.message = availability.DELAYED_MESSAGE
+    return resp
 
+
+async def _run_payout(req, app_id, api_key_id, debug):
     # Mode mock : court-circuite DigiKUNTZ (garde quand même la compta réelle).
     if settings.mock_payments:
         return await _execute_payout_mock(req, app_id, api_key_id, debug)
