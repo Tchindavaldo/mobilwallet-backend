@@ -1,5 +1,5 @@
-"""Routes payout complémentaires : virements groupés (POST /payout/bulk) et
-annulation d'un virement encore en file d'attente (POST /payout/{ref}/cancel).
+"""Routes payout complémentaires : devis (GET /payout/quote), virements groupés
+(POST /payout/bulk) et annulation d'un virement encore en file d'attente (POST /payout/{ref}/cancel).
 
 Le bulk réutilise la chaîne de core/routers/payout.py (validation, réservation
 du solde, finalisation) ; seul l'appel agrégateur est groupé. Agrégateur sans
@@ -7,19 +7,44 @@ bulk -> virements exécutés un par un."""
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core import aggregator_ops, availability, tenants
+from core import aggregator_ops, availability, settlement, tenants
 from core.auth import AuthContext, require_api_key
 from core.config import settings
 from core.db import db
 from core.routers import payout as p
 from core.schemas.operations import BulkPayoutRequest
+from core.schemas.payout import PayoutQuote
 from core.upstream_errors import UPSTREAM_MESSAGES
 
 log = logging.getLogger("ai_browser2")
 
 router = APIRouter()
+
+
+@router.get("/payout/quote", response_model=PayoutQuote, tags=["payout"],
+            summary="Devis d'un virement : frais débités du solde, sans rien débiter")
+async def payout_quote(
+    amount: int = Query(..., gt=0, description="Montant à virer (XAF)."),
+    account_bank_code: str = Query(..., description="ORANGEMONEY | MTN"),
+    aggregator: str = Query("digikuntz"),
+    ctx: AuthContext = Depends(require_api_key),
+):
+    """Ce que coûterait ce virement au solde de votre app. Vers le réseau de vos
+    encaissements, les frais sont déjà prépayés (fee = 0) ; vers l'autre réseau,
+    ils sont pris sur le solde au taux de ce réseau, arrondis au franc supérieur."""
+    q = await settlement.reserve_app_payout(ctx.app_id, aggregator, account_bank_code,
+                                            amount, None, dry_run=True)
+    if q is None:
+        raise HTTPException(503, {"error": "quote_unavailable",
+                                  "message": "Devis indisponible, réessayez."})
+    fee = int(q.get("fee_from_balance") or 0)
+    return PayoutQuote(aggregator=aggregator, account_bank_code=account_bank_code,
+                       amount=amount, fee=fee, total_debited=amount + fee,
+                       balance=int(q.get("balance") or 0),
+                       balance_after=int(q.get("balance_after") or 0),
+                       sufficient=bool(q.get("ok")))
 
 
 def _item(i: int, resp=None, error=None) -> dict:

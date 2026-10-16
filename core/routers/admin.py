@@ -209,12 +209,14 @@ async def admin_app_balance(app_id: int):
     """Solde réel de l'app (retirable) + sa réserve de frais de payout prépayés,
     et le total des deux. Vue admin : l'app elle-même ne voit que `balance`."""
     balance = await db.get_app_balance(app_id)
-    reserve = await db.reserves_by_aggregator(app_id)
+    reserve = await db.reserves(app_id)   # {agg: {réseau: montant au centime}}
+    total_res = round(sum(sum(n.values()) for n in reserve.values()), 2)
     return {"app_id": app_id, "balance": balance,
             "by_aggregator": await db.balances_by_aggregator(app_id),
-            "payout_fee_reserve": sum(reserve.values()),
-            "payout_fee_reserve_by_aggregator": reserve,
-            "total": balance + sum(reserve.values()),
+            "payout_fee_reserve": total_res,
+            "payout_fee_reserve_by_network": {a: {k: round(v, 2) for k, v in n.items()}
+                                              for a, n in reserve.items()},
+            "total": round(balance + total_res, 2),
             "currency": "XAF"}
 
 

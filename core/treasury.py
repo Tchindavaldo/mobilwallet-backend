@@ -2,9 +2,12 @@
 compta interne, et reversement automatique du surplus d'arrondi à la plateforme.
 
 Interne d'un agrégateur = Σ soldes des apps + Σ réserves de frais des apps
-+ solde plateforme. On arrondit frais et commissions à l'excès, donc le réel
-dépasse l'interne de quelques fractions de franc : dès qu'un franc entier
-s'accumule (et que rien n'est en vol), il est crédité à la plateforme.
+(au centime) + solde plateforme + réserve libérée pas encore reversée.
+
+Deux reversements à la plateforme, en francs entiers, quand rien n'est en vol :
+  - la réserve libérée (payouts vers un autre réseau que le dépôt) ;
+  - le surplus d'arrondi : frais et commissions arrondis à l'excès, donc le réel
+    dépasse l'interne de quelques fractions de franc.
 """
 
 import asyncio
@@ -36,27 +39,47 @@ async def real_balances() -> dict:
 async def reconciliation() -> dict:
     real = await real_balances()
     split = await db.balances_by_aggregator()
-    reserves = await db.reserves_by_aggregator()
+    reserves = {a: sum(n.values()) for a, n in (await db.reserves()).items()}
+    pending = await _pending_release()
     per: dict = {}
     for name in sorted(set(real) | set(split["apps"]) | set(split["platform"]) | set(reserves)):
         apps, plat = split["apps"].get(name, 0), split["platform"].get(name, 0)
-        res = reserves.get(name, 0)
-        internal = apps + res + plat
+        res = round(reserves.get(name, 0), 2)
+        rel = round(pending.get(name, 0), 2)
+        internal = round(apps + res + plat + rel, 2)
         r = real.get(name)
         diff = None if r is None else round(r - internal, 2)
         per[name] = {"apps_total": apps, "apps_payout_reserve": res, "platform_balance": plat,
+                     "reserve_released_pending": rel,
                      "internal_total": internal, "real_balance": r, "difference": diff,
                      "reconciled": diff is not None and 0 <= diff < 1}
     return {
         "aggregators": per,
         "apps_total": sum(v["apps_total"] for v in per.values()),
-        "apps_payout_reserve": sum(v["apps_payout_reserve"] for v in per.values()),
+        "apps_payout_reserve": round(sum(v["apps_payout_reserve"] for v in per.values()), 2),
         "platform_balance": sum(v["platform_balance"] for v in per.values()),
-        "internal_total": sum(v["internal_total"] for v in per.values()),
+        "internal_total": round(sum(v["internal_total"] for v in per.values()), 2),
         "real_total": round(sum(v["real_balance"] or 0 for v in per.values()), 2),
         "reconciled": all(v["reconciled"] for v in per.values()),
         "currency": "XAF",
     }
+
+
+async def _pending_release() -> dict:
+    """Réserve libérée pas encore reversée à la plateforme : {agg: montant}."""
+    released = await db.reserve_released()
+    credited = await db.platform_credited("reserve_release")
+    return {a: v - credited.get(a, 0) for a, v in released.items()}
+
+
+async def _sweep_releases(swept: dict) -> None:
+    for name, amount in (await _pending_release()).items():
+        whole = math.floor(amount + 1e-9)
+        if whole < 1 or await db.has_unsettled(name):
+            continue
+        await db.credit_platform(whole, reason="reserve_release", aggregator=name)
+        log.info("trésorerie %s : réserve libérée %s XAF -> plateforme", name, whole)
+        swept[f"{name}:reserve_release"] = whole
 
 
 async def sweep_rounding_surplus() -> dict:
@@ -65,6 +88,7 @@ async def sweep_rounding_surplus() -> dict:
     arrondi (négatif ou >= SURPLUS_MAX : signalé dans les logs)."""
     swept: dict = {}
     async with _lock:
+        await _sweep_releases(swept)
         rec = await reconciliation()
         for name, v in rec["aggregators"].items():
             diff = v["difference"]
