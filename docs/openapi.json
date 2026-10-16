@@ -1183,6 +1183,63 @@
         }
       }
     },
+    "/availability": {
+      "get": {
+        "tags": [
+          "availability"
+        ],
+        "summary": "Disponibilité des opérateurs",
+        "description": "Statut par opérateur et par opération (deposit, payout, refund) :\nOPERATIONAL (normal), DELAYED (très lent : refusé), CLOSED (refusé).\nListe vide si l'agrégateur ne publie pas cette information.",
+        "operationId": "operators_availability_availability_get",
+        "parameters": [
+          {
+            "name": "aggregator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "pawapay",
+              "title": "Aggregator"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Agrégateur inconnu."
+          },
+          "502": {
+            "description": "Agrégateur injoignable, réessayez."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/developers": {
       "post": {
         "tags": [
