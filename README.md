@@ -44,7 +44,8 @@ ai_browser2/
 │   └── digikuntz/
 │       ├── aggregator.py       #   DigikuntzAggregator (implémente l'ABC, s'enregistre)
 │       ├── browser_flow.py     #   mode navigateur (objectif IA, watch USSD, verdict)
-│       └── replay_flow.py      #   mode curl replay (steps + interpret)
+│       ├── replay_flow.py      #   façade mode curl replay (ré-exporte replay/)
+│       └── replay/             #   interpret, config, steps, cli du mode replay
 ├── schema/supabase.sql         # tables transactions + curl_templates
 ├── .env.example                # clés de configuration
 └── requirements.txt

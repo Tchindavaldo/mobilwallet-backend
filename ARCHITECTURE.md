@@ -132,8 +132,12 @@ ai_browser2/
 │       ├── status_poll.py        Polling statut DigiKUNTZ (GET {base}/transaction?transactionId=) :
 │       │                         source de vérité du verdict après USSD. payin_* -> interne, poll
 │       │                         jusqu'à un verdict terminal (sans timeout : l'opérateur tranche toujours). 0 token.
-│       ├── replay_flow.py        Mode curl replay : step1..step4 (create/init/charge/poll verify),
-│       │                         ReplayConfig (config par appel, pas de globals mutés), interpret_*.
+│       ├── replay_flow.py        Façade du mode curl replay : ré-exporte replay/ (imports `replay_flow.X`).
+│       ├── replay/               Mode curl replay (sans navigateur), découpé par rôle :
+│       │   ├── interpret.py      Codes Flutterwave -> (statut, message) : interpret_charge/verify/ping, libellés réseau/USSD.
+│       │   ├── config.py         Constantes DigiKUNTZ/Flutterwave (.env), HEADERS, ReplayConfig (config par appel).
+│       │   ├── steps.py          step1..step4 (create/init/charge/poll verify), appels HTTP.
+│       │   └── cli.py            Point d'entrée CLI de test manuel (enchaîne step1..step4).
 │       └── payout_flow.py        Payout (retrait) : initiate_payout (POST {base}/payout) +
 │                                 poll_payout_status (GET {base}/transaction, mapping payout_*,
 │                                 registre webhook⇄polling). Aucun navigateur/LLM/Flutterwave.
