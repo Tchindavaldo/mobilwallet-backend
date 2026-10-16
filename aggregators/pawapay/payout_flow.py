@@ -20,6 +20,8 @@ def friendly_msg(status: str) -> str:
         return "Virement annulé (non abouti)."
     if status == "failed":
         return "Échec du virement."
+    if status == "error":
+        return "Virement introuvable chez le prestataire : rien n'a été envoyé."
     return "Virement en cours."
 
 
@@ -48,6 +50,6 @@ async def poll_payout_status(provider_id: str) -> dict:
     v = await client.poll_until_final("payouts", provider_id)
     msg = friendly_msg(v["status"])
     detail = client.failure_message(v.get("failure"))
-    if detail and v["status"] != "successful":
-        msg = f"{msg} ({detail})"
+    if detail and v["status"] in ("failed", "cancelled"):
+        msg = f"{msg} {detail}"
     return {"status": v["status"], "message": msg, "settled_by": v["settled_by"]}

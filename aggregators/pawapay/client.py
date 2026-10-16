@@ -19,7 +19,7 @@ import uuid
 import httpx
 
 from core.config import settings
-from core.upstream_errors import classify_upstream_error
+from core.upstream_errors import NETWORK_UNAVAILABLE, classify_upstream_error
 from core.verdict_registry import VerdictRegistry
 
 log = logging.getLogger("ai_browser2")
@@ -48,6 +48,36 @@ STATUS_MAP = {
 _CANCEL_CODES = {"PAYMENT_NOT_APPROVED", "MANUALLY_CANCELLED"}
 
 TERMINAL = {"successful", "failed", "cancelled"}
+
+# failureCode pawaPay -> message FR affiché au client (dépôts, payouts, rejets).
+FAILURE_MESSAGES_FR = {
+    "INSUFFICIENT_BALANCE": "Solde insuffisant sur le compte Mobile Money.",
+    "PAYMENT_NOT_APPROVED": "Paiement non validé : la demande de code PIN a été refusée ou a expiré.",
+    "MANUALLY_CANCELLED": "Vous avez annulé manuellement le paiement.",
+    "PAYER_NOT_FOUND": "Ce numéro n'a pas de compte Mobile Money actif.",
+    "RECIPIENT_NOT_FOUND": "Le numéro bénéficiaire n'a pas de compte Mobile Money actif.",
+    "PAYER_LIMIT_REACHED": "Plafond de transactions atteint sur ce compte Mobile Money.",
+    "RECIPIENT_LIMIT_REACHED": "Plafond de réception atteint sur le compte bénéficiaire.",
+    "PAYMENT_IN_PROGRESS": "Un autre paiement est déjà en cours sur ce numéro. Réessayez dans quelques minutes.",
+    "WALLET_LIMIT_REACHED": "Plafond du compte Mobile Money atteint.",
+    "UNSPECIFIED_FAILURE": "L'opérateur a refusé le paiement sans préciser la raison.",
+    "UNKNOWN_ERROR": "Erreur inconnue chez l'opérateur.",
+    "INVALID_PHONE_NUMBER": "Numéro de téléphone invalide.",
+    "INVALID_AMOUNT": "Montant invalide.",
+    "AMOUNT_OUT_OF_BOUNDS": "Montant hors des limites autorisées par l'opérateur.",
+    "INVALID_PROVIDER": "Opérateur non pris en charge pour ce numéro.",
+    "PROVIDER_TEMPORARILY_UNAVAILABLE": "L'opérateur Mobile Money est momentanément indisponible. Réessayez plus tard.",
+    "INVALID_CURRENCY": "Devise non prise en charge.",
+    "DUPLICATE_METADATA_FIELD": "Requête invalide.",
+    "INVALID_INPUT": "Requête invalide.",
+    "AUTHENTICATION_ERROR": "Service de paiement mal configuré (authentification).",
+    "AUTHORISATION_ERROR": "Opération non autorisée sur le compte marchand.",
+    "INSUFFICIENT_BALANCE_MERCHANT": "Solde marchand insuffisant pour effectuer le virement.",
+}
+
+# Un dépôt/payout introuvable chez pawaPay au-delà de ce délai n'a jamais été
+# créé (fait mécanique, pas un verdict de paiement) -> on arrête de poller.
+NOT_FOUND_GIVE_UP_S = 600
 
 # Coordination webhook /webhook/pawapay ⇄ polling (indexé par depositId/payoutId).
 registry = VerdictRegistry()
@@ -110,13 +140,19 @@ async def _post(path: str, body: dict) -> dict:
             resp = await client.post(url, json=body, headers=_headers())
             if resp.status_code >= 500:
                 resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
     except (httpx.HTTPError, ValueError) as e:
         code = classify_upstream_error(e)
         log.warning("pawapay POST %s: échec (%s)", path, type(e).__name__)
         if code:
             raise PawapayUpstreamError(code) from e
         raise
+    if resp.status_code in (401, 403) and not data.get("status"):
+        # Token invalide/expiré : rien n'est parti chez l'opérateur.
+        log.error("pawapay POST %s: authentification refusée (HTTP %s) %s",
+                  path, resp.status_code, str(data)[:300])
+        raise PawapayUpstreamError(NETWORK_UNAVAILABLE)
+    return data
 
 
 async def _get(path: str, params: dict | None = None) -> dict | None:
@@ -173,10 +209,15 @@ async def initiate_payout(payout_id: str, amount: int, phone: str, network: str,
 
 
 async def fetch_status(kind: str, provider_id: str) -> dict | None:
-    """GET /v2/{deposits|payouts}/{id}. Retourne {internal, raw, failure, data}
-    ou None (erreur réseau, ou NOT_FOUND pas encore visible -> re-essayer)."""
+    """GET /v2/{deposits|payouts}/{id}. Retourne {internal, raw, failure, data},
+    {internal: "not_found"} si pawaPay ne connaît pas l'id, ou None (erreur
+    réseau -> re-essayer)."""
     body = await _get(f"/v2/{kind}/{provider_id}")
-    if not body or body.get("status") != "FOUND":
+    if not body:
+        return None
+    if body.get("status") == "NOT_FOUND":
+        return {"internal": "not_found", "raw": "NOT_FOUND", "failure": None, "data": {}}
+    if body.get("status") != "FOUND":
         return None
     data = body.get("data") or {}
     raw = data.get("status", "")
@@ -192,9 +233,11 @@ async def fetch_balances() -> list | None:
 
 
 def failure_message(failure: dict | None) -> str:
+    """Message FR pour le client ; repli sur le message pawaPay si code inconnu."""
     if not failure:
         return ""
-    return failure.get("failureMessage") or failure.get("failureCode") or ""
+    code = failure.get("failureCode") or ""
+    return (FAILURE_MESSAGES_FR.get(code) or failure.get("failureMessage") or code)
 
 
 async def poll_until_final(kind: str, provider_id: str) -> dict:
@@ -206,6 +249,7 @@ async def poll_until_final(kind: str, provider_id: str) -> dict:
     """
     ev = registry.register(provider_id)
     start = time.monotonic()
+    not_found_since: float | None = None
     try:
         while True:
             if ev.is_set():
@@ -213,7 +257,16 @@ async def poll_until_final(kind: str, provider_id: str) -> dict:
                 if v.get("status") in TERMINAL:
                     return {**v, "settled_by": "webhook"}
             res = await fetch_status(kind, provider_id)
-            if res is not None:
+            if res is not None and res["internal"] == "not_found":
+                now = time.monotonic()
+                not_found_since = not_found_since or now
+                if now - not_found_since >= NOT_FOUND_GIVE_UP_S:
+                    log.error("pawapay poll %s %s: introuvable depuis %ss -> abandon",
+                              kind, provider_id, NOT_FOUND_GIVE_UP_S)
+                    return {"status": "error", "raw": "NOT_FOUND",
+                            "failure": None, "settled_by": "polling"}
+            elif res is not None:
+                not_found_since = None
                 log.info("pawapay poll %s %s: %s -> %s", kind, provider_id,
                          res["raw"], res["internal"])
                 if res["internal"] in TERMINAL:
