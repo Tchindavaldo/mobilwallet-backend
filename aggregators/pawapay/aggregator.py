@@ -29,9 +29,9 @@ _MESSAGES = {
 }
 
 
-def friendly_msg(status: str, failure: dict | None = None) -> str:
+def friendly_msg(status: str, failure: dict | None = None, network: str | None = None) -> str:
     """Message client. En échec/annulation, la raison précise (FR) prime."""
-    detail = client.failure_message(failure)
+    detail = client.failure_message(failure, network)
     if detail and status in ("failed", "cancelled"):
         return detail
     return _MESSAGES.get(status, "Paiement en cours.")
@@ -77,8 +77,8 @@ class PawapayAggregator(Aggregator):
             return result
         # Refus à l'initiation : rien n'a atteint le client.
         result.final_status = init["internal"] if init["internal"] in client.TERMINAL else "failed"
-        result.error = client.failure_message(init["failure"])
-        result.final_message = friendly_msg(result.final_status, init["failure"])
+        result.error = client.failure_message(init["failure"], req.network)
+        result.final_message = friendly_msg(result.final_status, init["failure"], req.network)
         return result
 
     async def finalize_after_close(self, req: PaymentRequest, result: PaymentResult) -> None:
@@ -89,7 +89,7 @@ class PawapayAggregator(Aggregator):
         status = verdict["status"]
         result.final_status = status
         result.success = status == "successful"
-        result.final_message = friendly_msg(status, verdict.get("failure"))
+        result.final_message = friendly_msg(status, verdict.get("failure"), req.network)
         result.settled_by = verdict.get("settled_by")
         result.poll_after_close = None
         if result.success:
