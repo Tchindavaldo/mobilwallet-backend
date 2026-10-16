@@ -51,6 +51,7 @@ ai_browser2/
 │   │   ├── admin.py              /admin/* : supervision developers/apps/clés + /admin/apps/{app_id}/pay
 │   │   │                         + /admin/apps/{app_id}/payout + .../balance + /ledger/backfill
 │   │   │                         + /digikuntz/balance (solde global) + /pawapay/balance
+│   │   │                         + /pawapay/config (opérateurs actifs, montants min/max)
 │   │   │                         + /reconciliation (require_admin).
 │   │   └── dev.py                /drive, /test-llm.
 │   ├── schemas/                  Modèles Pydantic par domaine (payments, system, templates, dev,
