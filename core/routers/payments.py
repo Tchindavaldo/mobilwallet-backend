@@ -182,7 +182,7 @@ async def _execute_payment(
             },
         )
 
-    label = f"MobileWallet-{app_name}" if app_name else "MobileWallet"
+    label = req.description or (f"MobileWallet-{app_name}" if app_name else "MobileWallet")
     payment = PaymentRequest(
         amount=req.amount,
         phone=req.phone,
@@ -297,7 +297,7 @@ async def _execute_direct(cls, req, app_id, api_key_id, debug, app_name):
             "aggregator": req.aggregator,
             "supported_networks": agg.supported_networks,
         })
-    label = f"MobileWallet {app_name}" if app_name else "MobileWallet"
+    label = req.description or (f"MobileWallet {app_name}" if app_name else "MobileWallet")
     payment = PaymentRequest(
         amount=req.amount, phone=req.phone, network=canonical_network,
         email=req.email, sender_name=label, callback_url=req.callback_url, raison=label,
