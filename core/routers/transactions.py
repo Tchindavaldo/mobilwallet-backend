@@ -7,7 +7,7 @@ les transactions de ses propres apps. Une transaction d'une autre app renvoie
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from core import status_check, tenants
+from core import aggregator_ops, status_check, tenants
 from core.auth import AuthContext, require_api_key
 from core.db import db
 
@@ -126,3 +126,21 @@ async def cancel_transaction(tx_id: int, ctx: AuthContext = Depends(require_api_
     if row is None:
         raise HTTPException(404, f"Aucune transaction 'pending' (de votre app) avec l'id {tx_id}.")
     return {"cancelled": row}
+
+
+@router.post(
+    "/status/{transaction_ref}/resend-callback",
+    tags=["transactions"],
+    summary="Faire renvoyer le callback final par l'agrégateur",
+    responses={404: {"description": "Aucune transaction pour cette référence."},
+               400: {"description": "Agrégateur sans renvoi de callback."}},
+)
+async def resend_callback(transaction_ref: str, ctx: AuthContext = Depends(require_api_key)):
+    """Demande à l'agrégateur de renvoyer son callback de statut final (utile si
+    un webhook s'est perdu). Le statut est alors réappliqué (BD, solde,
+    notification), sans doublon. Transaction encore en cours : refusé par l'agrégateur."""
+    tx = await _owned_tx(transaction_ref, ctx)
+    kind = (tx.get("type") or "payin").lower()
+    res = await aggregator_ops.call(tx.get("aggregator", ""), "resend_callback", kind,
+                                    tx.get("provider_transaction_id") or "")
+    return {"transaction_id": transaction_ref, **res}

@@ -703,6 +703,119 @@
         }
       }
     },
+    "/payout/bulk": {
+      "post": {
+        "tags": [
+          "payout"
+        ],
+        "summary": "Virements groupés (jusqu'à 20)",
+        "description": "Envoie jusqu'à 20 virements en un seul appel agrégateur. Chaque virement\nest validé et débité séparément : un refus (solde, doublon, opérateur\nindisponible…) n'empêche pas les autres. Résultat par élément (`index`).",
+        "operationId": "payout_bulk_payout_bulk_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkPayoutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Agrégateurs différents dans le lot."
+          },
+          "503": {
+            "description": "Service de paiement amont indisponible."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payout/{transaction_ref}/cancel": {
+      "post": {
+        "tags": [
+          "payout"
+        ],
+        "summary": "Annuler un virement en file d'attente",
+        "description": "Annule un virement que l'agrégateur n'a pas encore envoyé (en file\nd'attente, ex. opérateur lent). Accepté -> le statut `cancelled` arrive par\nwebhook et le solde est remboursé. Un virement déjà en cours d'envoi chez\nl'opérateur ne peut plus être annulé (refus de l'agrégateur).",
+        "operationId": "cancel_payout_payout__transaction_ref__cancel_post",
+        "parameters": [
+          {
+            "name": "transaction_ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Transaction Ref"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Aucun virement pour cette référence."
+          },
+          "409": {
+            "description": "Virement déjà final."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/payout": {
       "post": {
         "tags": [
@@ -806,6 +919,66 @@
           },
           "502": {
             "description": "Agrégateur injoignable, réessayez."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pay/page": {
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Créer une page de paiement hébergée",
+        "description": "Crée une page de paiement chez l'agrégateur et renvoie `redirect_url`\noù envoyer votre client. Suivi : `GET /status/{transaction_id}`, webhook,\nSocket.IO ; le client revient ensuite sur `return_url`.\n\nÀ l'arrivée sur `return_url`, ne considérez PAS le paiement comme fait :\nlisez `GET /status/{transaction_id}` (ou `/check`). Une page abandonnée\npasse `failed` environ 16 min après sa création.",
+        "operationId": "payment_page_pay_page_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentPageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Agrégateur sans page hébergée."
+          },
+          "502": {
+            "description": "Page refusée par l'agrégateur."
+          },
+          "503": {
+            "description": "Service de paiement amont indisponible."
           },
           "422": {
             "description": "Validation Error",
@@ -1183,13 +1356,69 @@
         }
       }
     },
+    "/status/{transaction_ref}/resend-callback": {
+      "post": {
+        "tags": [
+          "transactions"
+        ],
+        "summary": "Faire renvoyer le callback final par l'agrégateur",
+        "description": "Demande à l'agrégateur de renvoyer son callback de statut final (utile si\nun webhook s'est perdu). Le statut est alors réappliqué (BD, solde,\nnotification), sans doublon. Transaction encore en cours : refusé par l'agrégateur.",
+        "operationId": "resend_callback_status__transaction_ref__resend_callback_post",
+        "parameters": [
+          {
+            "name": "transaction_ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Transaction Ref"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Aucune transaction pour cette référence."
+          },
+          "400": {
+            "description": "Agrégateur sans renvoi de callback."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/availability": {
       "get": {
         "tags": [
           "availability"
         ],
         "summary": "Disponibilité des opérateurs",
-        "description": "Statut par opérateur et par opération (deposit, payout, refund) :\nOPERATIONAL (normal), DELAYED (très lent : refusé), CLOSED (refusé).\nListe vide si l'agrégateur ne publie pas cette information.",
+        "description": "Statut par opérateur et par opération (deposit, payout, refund) :\nOPERATIONAL (normal), DELAYED (payouts/refunds mis en file : acceptés,\nexécutés plus tard), CLOSED (refusé : utilisez l'autre réseau).\nListe vide si l'agrégateur ne publie pas cette information.",
         "operationId": "operators_availability_availability_get",
         "parameters": [
           {
@@ -1226,6 +1455,60 @@
           },
           "502": {
             "description": "Agrégateur injoignable, réessayez."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operators/predict": {
+      "post": {
+        "tags": [
+          "availability"
+        ],
+        "summary": "Deviner l'opérateur d'un numéro",
+        "description": "À partir d'un numéro saisi librement (espaces, +237, 0…), renvoie le\nnuméro au format international et son opérateur (`network` utilisable\ntel quel dans /pay).",
+        "operationId": "predict_network_operators_predict_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictNetworkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Agrégateur sans prédiction d'opérateur."
           },
           "422": {
             "description": "Validation Error",
@@ -2910,6 +3193,25 @@
         "title": "AppCreateSelf",
         "description": "Création d'une app par le dev (le developer_id vient du JWT, pas du corps)."
       },
+      "BulkPayoutRequest": {
+        "properties": {
+          "payouts": {
+            "items": {
+              "$ref": "#/components/schemas/PayoutRequest"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Payouts",
+            "description": "1 à 20 virements, tous sur le même agrégateur."
+          }
+        },
+        "type": "object",
+        "required": [
+          "payouts"
+        ],
+        "title": "BulkPayoutRequest"
+      },
       "DeveloperCreate": {
         "properties": {
           "email": {
@@ -3148,6 +3450,83 @@
         "title": "PayResponse",
         "description": "Vue CLIENT (dev qui intègre l'API) — strictement l'essentiel métier.\n\nTout le détail technique (charge_url, plaintext, curl, trace, tokens…) est\nréservé à l'admin (voir PayResponseDebug + ?debug=true). Ne JAMAIS ajouter de\nchamp interne ici."
       },
+      "PaymentPageRequest": {
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "title": "Amount",
+            "description": "Montant en XAF.",
+            "examples": [
+              1000
+            ]
+          },
+          "return_url": {
+            "type": "string",
+            "title": "Return Url",
+            "description": "URL où le client revient après paiement.",
+            "examples": [
+              "https://monsite.com/merci"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Libellé affiché au client (4-22 caractères).",
+            "default": "",
+            "examples": [
+              "Commande 42"
+            ]
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone",
+            "description": "Numéro du payeur (facultatif : saisi sur la page sinon).",
+            "default": ""
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "Langue de la page : FR ou EN.",
+            "default": "FR"
+          },
+          "aggregator": {
+            "type": "string",
+            "title": "Aggregator",
+            "description": "Agrégateur (doit proposer une page hébergée).",
+            "default": "pawapay"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "Email du payeur (facultatif).",
+            "default": ""
+          },
+          "callback_url": {
+            "type": "string",
+            "title": "Callback Url",
+            "description": "URL de callback (défaut : celle de l'app).",
+            "default": ""
+          },
+          "end_user_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End User Ref",
+            "description": "Identifiant opaque de votre utilisateur."
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount",
+          "return_url"
+        ],
+        "title": "PaymentPageRequest"
+      },
       "PayoutRequest": {
         "properties": {
           "amount": {
@@ -3316,6 +3695,28 @@
         ],
         "title": "PlatformCredit",
         "description": "Recharge du solde plateforme (argent propre de MobileWallet)."
+      },
+      "PredictNetworkRequest": {
+        "properties": {
+          "phone": {
+            "type": "string",
+            "title": "Phone",
+            "description": "Numéro dans n'importe quel format.",
+            "examples": [
+              "696 08 00 87"
+            ]
+          },
+          "aggregator": {
+            "type": "string",
+            "title": "Aggregator",
+            "default": "pawapay"
+          }
+        },
+        "type": "object",
+        "required": [
+          "phone"
+        ],
+        "title": "PredictNetworkRequest"
       },
       "RefreshRequest": {
         "properties": {

@@ -33,7 +33,9 @@ ai_browser2/
 │   ├── runtime.py                État partagé entre routers (browser/llm vivants) + helpers
 │   │                             transverses (seconds_since, fmt_duration).
 │   ├── routers/                  UN APIRouter PAR DOMAINE (logique des endpoints) :
-│   │   ├── availability.py       GET /availability : état des opérateurs (MTN, Orange).
+│   │   ├── availability.py       GET /availability (état des opérateurs) + POST /operators/predict.
+│   │   ├── payout_ops.py         POST /payout/bulk (≤20, un appel agrégateur) + POST /payout/{ref}/cancel.
+│   │   ├── payment_page.py       POST /pay/page : page de paiement hébergée -> redirect_url.
 │   │   ├── system.py             /health, /aggregators, /config/max-tabs.
 │   │   ├── payments.py           /pay (dispatch, mock, chemin navigateur/replay, chemin « API
 │   │   │                         directe » `_execute_direct` pour les agrégateurs direct_api).
@@ -57,7 +59,7 @@ ai_browser2/
 │   │   │                         + /pawapay/config (opérateurs actifs, montants min/max)
 │   │   │                         + /reconciliation (require_admin).
 │   │   └── dev.py                /drive, /test-llm.
-│   ├── schemas/                  Modèles Pydantic par domaine (payments, system, templates, dev,
+│   ├── schemas/                  Modèles Pydantic par domaine (payments, operations, system, templates, dev,
 │   │                             admin, auth, projects).
 │   ├── auth.py                   Auth des CLÉS API d'app (paiements) : génération/hash des clés,
 │   │                             AuthContext, cache TTL, dépendances require_api_key / require_admin.
@@ -92,7 +94,8 @@ ai_browser2/
 │   │                             payouts (insert_pending_payout/last_payout_for_account/update_payout).
 │   ├── fees.py                   Calcul PUR de ventilation (compute_fees / fees_info / fee_payer) :
 │   │                             brut → frais agrégateur (selon fee_payer) → commission MW → app + plateforme.
-│   ├── availability.py           Dispo opérateurs (neutre) : list + guard 503 sur /pay et /payout si DELAYED/CLOSED.
+│   ├── aggregator_ops.py         Accès neutre aux opérations optionnelles (aggregators.<nom>.operations).
+│   ├── availability.py           Dispo opérateurs (neutre) : list + guard 503 sur /pay et /payout si CLOSED (DELAYED = payout en file).
 │   ├── status_check.py           Vérif. manuelle chez l'agrégateur (1 appel, payin/payout) -> settle_verdict.
 │   ├── settlement.py             Imputation en compta (commune à tous les agrégateurs) : credit_payin,
 │   │                             payout_charges, refund_payout, settle_verdict (verdict terminal -> BD + compta + notif).
@@ -144,6 +147,7 @@ ai_browser2/
 │                                 poll_payout_status (GET {base}/transaction, mapping payout_*,
 │                                 registre webhook⇄polling). Aucun navigateur/LLM/Flutterwave.
 │   └── pawapay/                  Agrégateur « API directe » (Merchant API v2, Bearer token) :
+│       ├── operations.py         predict-provider, resend-callback, fail-enqueued, payouts/bulk, paymentpage.
 │       ├── availability.py       GET /v2/availability (cache 60 s) -> état par réseau/opération.
 │       ├── status_check.py       check_deposit_status : 1 appel GET /v2/deposits/{id} à la demande.
 │       ├── client.py             HTTP pawaPay : initiate_deposit/payout, fetch_status, soldes,

@@ -147,7 +147,7 @@ async def _post(path: str, body: dict) -> dict:
         if code:
             raise PawapayUpstreamError(code) from e
         raise
-    if resp.status_code in (401, 403) and not data.get("status"):
+    if resp.status_code in (401, 403) and not (isinstance(data, dict) and data.get("status")):
         # Token invalide/expiré : rien n'est parti chez l'opérateur.
         log.error("pawapay POST %s: authentification refusée (HTTP %s) %s",
                   path, resp.status_code, str(data)[:300])
@@ -188,9 +188,9 @@ async def initiate_deposit(deposit_id: str, amount: int, phone: str, network: st
             "body": body, "response": resp}
 
 
-async def initiate_payout(payout_id: str, amount: int, phone: str, network: str,
-                          label: str, client_ref: str = "") -> dict:
-    """POST /v2/payouts. Retourne {raw, internal, failure, body, response}."""
+def payout_body(payout_id: str, amount: int, phone: str, network: str,
+                label: str, client_ref: str = "") -> dict:
+    """Corps d'un payout pawaPay (unitaire ou élément d'un bulk)."""
     body = {
         "payoutId": payout_id,
         "amount": str(int(amount)),
@@ -201,6 +201,13 @@ async def initiate_payout(payout_id: str, amount: int, phone: str, network: str,
     }
     if client_ref:
         body["clientReferenceId"] = client_ref
+    return body
+
+
+async def initiate_payout(payout_id: str, amount: int, phone: str, network: str,
+                          label: str, client_ref: str = "") -> dict:
+    """POST /v2/payouts. Retourne {raw, internal, failure, body, response}."""
+    body = payout_body(payout_id, amount, phone, network, label, client_ref)
     resp = await _post("/v2/payouts", body)
     raw = resp.get("status", "")
     failure = resp.get("failureReason")
@@ -245,6 +252,38 @@ async def fetch_availability(operation: str | None = None) -> list | None:
     if operation:
         params["operationType"] = operation
     return await _get("/v2/availability", params)
+
+
+async def initiate_payouts_bulk(bodies: list[dict]) -> list[dict]:
+    """POST /v2/payouts/bulk (20 max). Retourne, par payoutId,
+    [{payout_id, raw, internal, failure}] dans l'ordre de `bodies`."""
+    resp = await _post("/v2/payouts/bulk", bodies)
+    by_id = {r.get("payoutId"): r for r in resp} if isinstance(resp, list) else {}
+    out = []
+    for b in bodies:
+        r = by_id.get(b["payoutId"], {"status": "REJECTED",
+                                     "failureReason": {"failureMessage": "absent de la réponse"}})
+        raw, failure = r.get("status", ""), r.get("failureReason")
+        out.append({"payout_id": b["payoutId"], "raw": raw,
+                    "internal": map_status(raw, failure), "failure": failure})
+    return out
+
+
+async def fail_enqueued_payout(payout_id: str) -> dict:
+    """POST /v2/payouts/fail-enqueued/{id} : annule un payout ENQUEUED (il passe
+    FAILED / MANUALLY_CANCELLED, verdict livré par webhook). Réponse brute."""
+    return await _post(f"/v2/payouts/fail-enqueued/{payout_id}", {})
+
+
+async def resend_callback(kind: str, provider_id: str) -> dict:
+    """POST /v2/{deposits|payouts}/resend-callback/{id} : pawaPay renvoie le
+    webhook du statut final. Réponse brute ({status: ACCEPTED|REJECTED, ...})."""
+    return await _post(f"/v2/{kind}/resend-callback/{provider_id}", {})
+
+
+async def predict_provider(phone: str) -> dict:
+    """POST /v2/predict-provider : opérateur + numéro au format international."""
+    return await _post("/v2/predict-provider", {"phoneNumber": phone})
 
 
 _NETWORK_NAMES = {"orange": "Orange Money", "mtn": "MTN Mobile Money"}

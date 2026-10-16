@@ -26,7 +26,8 @@ from core.config import settings
 from core.db import db
 from core.llm_client import LlmClient, LlmConfig
 from core.routers import (
-    admin, auth, availability, dev, payments, payout, projects, system, templates, transactions,
+    admin, auth, availability, dev, payment_page, payments, payout, payout_ops, projects,
+    system, templates, transactions,
     webhooks,
 )
 
@@ -41,6 +42,32 @@ logging.basicConfig(
 for noisy in ("httpx", "httpcore", "uvicorn.access", "hpack", "openai"):
     logging.getLogger(noisy).setLevel(logging.WARNING)
 log = logging.getLogger("ai_browser2")
+
+
+async def _resume_unsettled() -> None:
+    """Après un redémarrage (redéploiement), les suivis en mémoire sont perdus.
+    On reprend chaque transaction non finale : une vérification chez
+    l'agrégateur tout de suite (rattrape un verdict arrivé pendant la coupure),
+    et pour une page de paiement une autre à son expiration (aucun webhook
+    n'arrive si le client l'abandonne). Le reste arrive par webhook."""
+    from datetime import datetime, timezone
+    from core import aggregator_ops, status_check
+    rows = await db.list_unsettled()
+    for i, tx in enumerate(rows):
+        ref = tx.get("transaction_ref")
+        status_check.schedule_check(ref, 5 + i * 0.5)  # étalé : pas de rafale
+        if tx.get("mode") != "page":
+            continue
+        try:
+            expiry = aggregator_ops.get(tx["aggregator"], "PAGE_EXPIRY_S")
+            created = datetime.fromisoformat(tx["created_at"].replace("Z", "+00:00"))
+            remaining = expiry + 60 - (datetime.now(timezone.utc) - created).total_seconds()
+            if remaining > 5 + i * 0.5:  # déjà expirée : la vérif immédiate suffit
+                status_check.schedule_check(ref, remaining)
+        except Exception as e:  # noqa: BLE001
+            log.warning("reprise vérif page %s : %s", ref, e)
+    if rows:
+        log.info("Reprise de %d transaction(s) non finale(s) après démarrage", len(rows))
 
 
 @asynccontextmanager
@@ -58,6 +85,8 @@ async def lifespan(app: FastAPI):
         model=settings.llm_model,
         api_key=settings.deepseek_api_key,
     ))
+
+    await _resume_unsettled()
 
     log.info("AI Browser 2 ready! Browser=%s, Model=%s",
              "headless" if headless else "visible",
@@ -108,7 +137,9 @@ app.include_router(webhooks.router)
 app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(payments.router)
+app.include_router(payout_ops.router)
 app.include_router(payout.router)
+app.include_router(payment_page.router)
 app.include_router(transactions.router)
 app.include_router(availability.router)
 app.include_router(templates.router)
