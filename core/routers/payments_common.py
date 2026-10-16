@@ -46,17 +46,48 @@ async def _credit_on_success(
                                  transaction_id=tx_id, reason="payin_fees")
 
 
+# Délai d'expiration d'une demande USSD côté opérateur (fait mécanique).
+USSD_EXPIRY_S = 17 * 60
+
+
 async def _guard_duplicate(req: PayRequest) -> None:
     """Garde anti-doublon par numéro (vaut pour curl ET navigateur).
 
-    - dernière transaction encore 'pending' → bloque : à confirmer ou annuler.
-    - dernière 'cancelled'/'successful' dans la fenêtre opérateur (selon le réseau)
-      → bloque avec le temps restant à attendre. Le reste est rechargeable.
+    - dernière 'pending' → bloque : à confirmer ou annuler.
+    - dernière 'ussd_sent' (USSD envoyé, PIN pas tranché) → bloque tant que la
+      demande n'a pas expiré côté opérateur (USSD_EXPIRY_S).
+    - dernière 'cancelled'/'successful', ou 'failed' APRÈS envoi de l'USSD, dans la
+      fenêtre opérateur (selon le réseau) → bloque avec le temps restant.
+      Un refus immédiat (rien n'a atteint le client) reste rechargeable.
     """
     last = await db.last_transaction_for_number(req.aggregator, req.phone)
     if not last:
         return
     status = (last.get("status") or "").lower()
+    # USSD envoyé, PIN pas encore tranché : bloque tant que la demande peut
+    # encore être validée (expiration opérateur ~17 min, fait mécanique). Au-delà,
+    # une ligne restée coincée (serveur coupé) ne bloque plus le numéro.
+    if status == "ussd_sent":
+        elapsed = runtime.seconds_since(last.get("ussd_sent_at") or last.get("created_at"))
+        if elapsed is None or elapsed < USSD_EXPIRY_S:
+            remaining = int(USSD_EXPIRY_S - (elapsed or 0))
+            raise HTTPException(
+                409,
+                {
+                    "error": "pending_exists",
+                    "message": (
+                        f"Une demande de paiement est déjà en attente de validation sur "
+                        f"le numéro {req.phone}. Validez-la avec votre code PIN ou "
+                        f"réessayez dans {runtime.fmt_duration(remaining)}."
+                    ),
+                    "aggregator": req.aggregator,
+                    "phone": req.phone,
+                    "transaction_id": last.get("id"),
+                    "retry_after_s": remaining,
+                },
+            )
+        return
+
     if status == "pending":
         raise HTTPException(
             409,
@@ -74,7 +105,7 @@ async def _guard_duplicate(req: PayRequest) -> None:
 
     # cancelled : la fenêtre opérateur court depuis l'ENVOI de l'USSD
     # (ussd_sent_at) ; fallbacks cancelled_at puis created_at.
-    if status == "cancelled":
+    if status == "cancelled" or (status == "failed" and last.get("ussd_sent_at")):
         elapsed = runtime.seconds_since(
             last.get("ussd_sent_at")
             or last.get("cancelled_at")
@@ -89,7 +120,7 @@ async def _guard_duplicate(req: PayRequest) -> None:
                     "error": "retry_too_soon",
                     "message": (
                         f"Une transaction récente sur le numéro {req.phone} n'a pas "
-                        f"abouti (annulée). Réessayez dans {runtime.fmt_duration(remaining)}."
+                        f"abouti. Réessayez dans {runtime.fmt_duration(remaining)}."
                     ),
                     "aggregator": req.aggregator,
                     "phone": req.phone,
