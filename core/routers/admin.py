@@ -290,6 +290,37 @@ async def admin_pawapay_config():
     return conf
 
 
+# TEMPORAIRE (diagnostic activation payout) : appels BRUTS à pawaPay, sans garde
+# ni écriture en compta. Retourne le statut HTTP et le corps exacts. À retirer.
+@router.post("/pawapay/raw-payout", summary="TEMP : POST /v2/payouts brut (diagnostic)")
+async def admin_pawapay_raw_payout(amount: int, phone: str, network: str):
+    import httpx
+    from aggregators.pawapay import client
+    body = client.payout_body(client.new_id(), amount, phone, network, "Test payout")
+    async with httpx.AsyncClient(timeout=30) as http:
+        r = await http.post(f"{client._pp.base.rstrip('/')}/v2/payouts",
+                            json=body, headers=client._headers())
+    try:
+        resp = r.json()
+    except ValueError:
+        resp = r.text
+    return {"http_status": r.status_code, "sent": body, "response": resp}
+
+
+@router.get("/pawapay/raw-payout/{payout_id}", summary="TEMP : GET /v2/payouts/{id} brut")
+async def admin_pawapay_raw_payout_status(payout_id: str):
+    import httpx
+    from aggregators.pawapay import client
+    async with httpx.AsyncClient(timeout=15) as http:
+        r = await http.get(f"{client._pp.base.rstrip('/')}/v2/payouts/{payout_id}",
+                           headers=client._headers())
+    try:
+        resp = r.json()
+    except ValueError:
+        resp = r.text
+    return {"http_status": r.status_code, "response": resp}
+
+
 @router.get("/reconciliation", summary="Réconciliation par agrégateur : soldes internes vs soldes réels")
 async def admin_reconciliation():
     """Pour CHAQUE agrégateur : Σ soldes apps + Σ réserves de frais des apps +
