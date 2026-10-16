@@ -11,6 +11,13 @@ class PayRequest(BaseModel):
     sender_name: str = Field("Rauvalia", description="Nom affiché de l'émetteur.")
     callback_url: str = Field("", description="URL de callback (défaut: celle de l'agrégateur).")
     aggregator: str = Field("digikuntz", description="Nom de l'agrégateur (cf. GET /aggregators).")
+    description: str | None = Field(
+        None, min_length=4, max_length=22,
+        description="Libellé de l'achat affiché au payeur dans la demande USSD/PIN "
+        "(ex. « Achat Yaammoo »). 4 à 22 caractères : lettres, chiffres et espaces "
+        "(les autres caractères sont retirés). Défaut : « MobileWallet <nom de l'app> ».",
+        examples=["Achat Yaammoo"],
+    )
     mode: str = Field("auto", description="auto | browser | replay.", examples=["auto"])
     fallback_browser: bool = Field(
         True,
