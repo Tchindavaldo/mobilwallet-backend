@@ -176,9 +176,11 @@ ai_browser2/
 
 1. **server.py** valide (agrégateur, réseau), applique la **garde anti-doublon** par numéro :
    - dernière transaction `pending` → 409 (confirmer/annuler) ;
-   - dernière `cancelled` (depuis `ussd_sent_at`) ou `successful` (depuis
-     `validated_at`) dans le délai anti-doublon → 409 retry_too_soon ;
-   - `failed`/panne → relançable tout de suite.
+   - dernière `ussd_sent` (PIN pas encore tranché) → 409 pending_exists tant que la
+     demande n'a pas expiré côté opérateur (17 min depuis `ussd_sent_at`) ;
+   - dernière `cancelled` ou `failed` APRÈS envoi USSD (depuis `ussd_sent_at`), ou
+     `successful` (depuis `validated_at`) dans le délai anti-doublon → 409 retry_too_soon ;
+   - refus immédiat (`failed` sans USSD envoyé) / panne → relançable tout de suite.
 2. Insère la transaction `pending`, dispatch selon `mode` (auto/browser/replay) vers
    l'agrégateur (`pay_via_browser` ou `replay`).
 3. **browser** : `run_browser_flow` acquiert une **session isolée**, crée la transaction
