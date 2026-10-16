@@ -215,3 +215,14 @@ Après toute modif des endpoints/modèles dans `core/server.py`, régénérer la
   **idempotent** (`if not exists`). Une migration = un fichier.
 - L'utilisateur applique les migrations côté Supabase. Ne jamais modifier une
   ligne de la base sans accord explicite de l'utilisateur.
+- **Appliquer une migration via le MCP Supabase : en morceaux, et jamais de
+  fonction.** Constaté : toute requête contenant `create function` (avec `$$` ou
+  guillemets simples, via `apply_migration` comme `execute_sql`) part en timeout
+  60 s et n'atteint jamais la base. Donc :
+  1. Tables, index, vues, données : via `apply_migration`, un morceau court par
+     appel ; après un timeout, vérifier en lecture (`to_regclass`, `pg_proc`) si
+     c'est appliqué avant de relancer.
+  2. Fonctions SQL (`create function`) : ne pas essayer via le MCP. Donner à
+     l'utilisateur le fichier/les lignes exactes à coller dans Supabase → SQL
+     Editor, puis vérifier en lecture (`pg_proc`) qu'elle existe.
+  3. Toujours appliquer la migration AVANT de déployer le code qui l'utilise.
