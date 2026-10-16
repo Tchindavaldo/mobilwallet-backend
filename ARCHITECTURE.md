@@ -85,8 +85,10 @@ ai_browser2/
 │   │                             platform_ledger (credit_platform/debit_platform/get_platform_balance),
 │   │                             aggregators (get/list/upsert_aggregator_config),
 │   │                             payouts (insert_pending_payout/last_payout_for_account/update_payout).
-│   ├── fees.py                   Calcul de ventilation des frais (compute_fees / fees_info) :
-│   │                             brut → frais agrégateur → net → commission MW → app + plateforme.
+│   ├── fees.py                   Calcul PUR de ventilation (compute_fees / fees_info / fee_payer) :
+│   │                             brut → frais agrégateur (selon fee_payer) → commission MW → app + plateforme.
+│   ├── settlement.py             Imputation en compta (commune à tous les agrégateurs) : credit_payin,
+│   │                             payout_charges, refund_payout. Résout taux + fee_payer en BD.
 │   ├── browser.py                BrowserSession (1 transaction = 1 contexte isolé : page, capture
 │   │                             réseau, frame active, snapshot, actions, wait_for_page_change) +
 │   │                             BrowserController (POOL : acquire/release_session, N sessions par
@@ -158,7 +160,9 @@ ai_browser2/
 │       ├── 018_platform_ledger.sql  Solde PLATEFORME (argent propre MobileWallet) + vue platform_balance.
 │       └── 019_aggregators.sql      Config des taux par agrégateur : aggregator_fee_rate (5% DigiKUNTZ),
 │                                    mw_commission_type/value (percent|flat). Pré-rempli digikuntz 5%/5%.
-│       └── 022_aggregator_pawapay.sql  Ligne 'pawapay' (commission MW à 0, à ajuster).
+│       ├── 022_aggregator_pawapay.sql  Ligne 'pawapay' (commission MW à 0, à ajuster).
+│       └── 023_aggregator_fee_payer.sql aggregators.fee_payer, table aggregator_fee_rates
+│                                       (taux par réseau/opération), transactions.provider_fee.
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── fly.toml                      Déploiement Fly.io : machine toujours allumée (auto_stop off).
@@ -249,17 +253,26 @@ C'est donc à **nous** de tenir le **solde de chaque app**.
   (marge/frais/flottant), distinct des apps clientes. L'admin le recharge
   (`POST /admin/platform/credit`) et retire dessus (`POST /admin/platform/payout`)
   **sans contrôle de solde** (peut devenir négatif). L'invariant complet est donc
-  `Σ soldes apps + solde plateforme == solde global DigiKUNTZ` (cf. `/admin/reconciliation`).
+  `Σ soldes apps + solde plateforme == Σ soldes réels des agrégateurs` (compte global
+  DigiKUNTZ + wallets pawaPay ; cf. `/admin/reconciliation`).
 - **Taux de commission par agrégateur** : stockés en BD (`aggregators`, migration 019),
   modifiables à chaud via `PUT /admin/aggregators/{name}/fees`. Deux taux :
   - `aggregator_fee_rate` : ce que prend l'agrégateur sur le brut (DigiKUNTZ = 5%) ;
   - `mw_commission_type/value` : commission MobileWallet sur le net (`percent` ou `flat`).
   Consultables publiquement via `GET /aggregators` et `GET /aggregators/{name}/fees`
   (avec simulation pour un montant donné).
-- **Split comptable au payin** (`core/fees.py` → `compute_fees`) :
-  brut → frais agrégateur → net → commission MW → `credit_app(net − comm)` +
-  `credit_platform(frais + comm)`. Idempotent (même `transaction_id`), donc aucun
-  double crédit même si polling et webhook concourent.
+- **Qui paie les frais de l'agrégateur** (`aggregators.fee_payer`, migration 023) :
+  `customer` (pris au client final, ex. DigiKUNTZ : hors compta), `app` (pris sur le
+  wallet marchand et déduits de l'app, ex. pawaPay) ou `platform` (supportés par MW).
+  Taux par réseau/opération dans `aggregator_fee_rates` ; frais = ceil(brut × taux),
+  enregistrés dans `transactions.provider_fee`.
+- **Split comptable au payin** (`core/settlement.py` → `credit_payin`, calcul dans
+  `core/fees.py`) : app = brut − frais(si payer=app) − commission ; plateforme =
+  commission (− frais si payer=platform). Invariant : app + plateforme = ce que le
+  wallet a réellement reçu. Idempotent (même `transaction_id`), donc aucun double
+  crédit même si polling et webhook concourent.
+- **Payout** : débit de l'app = montant + frais (si payer=app) ; remboursement
+  identique si le virement échoue (`settlement.refund_payout`).
 - **Crédit au payin** : le split est appliqué quand un payin devient `successful`
   (settle polling OU webhook). `db.backfill_ledger_from_transactions()` (endpoint
   `POST /admin/ledger/backfill`) amorce les soldes depuis l'historique (sans split,

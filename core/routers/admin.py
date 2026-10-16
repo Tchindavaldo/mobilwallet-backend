@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from core import auth, tenants
 from core.auth import require_admin
 from core.db import db
+from core.fees import FEE_PAYERS
 from core.schemas.admin import (
     AdminPayoutRequest, AdminPayRequest, AggregatorConfigUpdate, AppCommissionUpdate,
     ApiKeyCreate, ApiKeyCreated, AppCreate, DeveloperCreate, PlatformCredit,
@@ -272,26 +273,38 @@ async def admin_pawapay_config():
     return conf
 
 
-@router.get("/reconciliation", summary="Réconciliation Σ soldes apps + plateforme vs solde global DigiKUNTZ")
+@router.get("/reconciliation", summary="Réconciliation Σ soldes apps + plateforme vs soldes réels des agrégateurs")
 async def admin_reconciliation():
     """Contrôle l'invariant comptable : Σ soldes apps + solde plateforme doit égaler
-    le solde réel du compte global DigiKUNTZ. Signale tout écart."""
+    la somme des soldes RÉELS chez les agrégateurs (compte global DigiKUNTZ +
+    wallets pawaPay XAF). Un agrégateur injoignable rend le contrôle incomplet."""
     from aggregators.digikuntz import status_poll
+    from aggregators.pawapay import client as pawapay
     apps_total = await db.total_apps_balance()
     platform = await db.get_platform_balance()
     internal_total = apps_total + platform
+
     glob = await status_poll.fetch_global_balance()
-    global_balance = glob.get("balance") if glob else None
-    diff = (global_balance - internal_total) if global_balance is not None else None
+    pp = await pawapay.fetch_balances()
+    real = {
+        "digikuntz": glob.get("balance") if glob else None,
+        "pawapay": (sum(int(float(b.get("balance") or 0)) for b in pp
+                        if (b.get("currency") or "XAF") == "XAF")
+                    if pp is not None else None),
+    }
+    complete = all(v is not None for v in real.values())
+    real_total = sum(v for v in real.values() if v is not None)
+    diff = real_total - internal_total if complete else None
     return {
         "apps_total": apps_total,
         "platform_balance": platform,
         "internal_total": internal_total,
-        "digikuntz_global": global_balance,
+        "aggregators": real,
+        "real_total": real_total,
         "difference": diff,
         "reconciled": diff == 0,
-        "currency": (glob or {}).get("currency", "XAF"),
-        "digikuntz_reachable": glob is not None,
+        "complete": complete,
+        "currency": "XAF",
     }
 
 
@@ -363,6 +376,8 @@ async def admin_update_aggregator_fees(name: str, body: AggregatorConfigUpdate):
     """
     if body.mw_commission_type and body.mw_commission_type not in ("percent", "flat"):
         raise HTTPException(400, "mw_commission_type doit être 'percent' ou 'flat'")
+    if body.fee_payer and body.fee_payer not in FEE_PAYERS:
+        raise HTTPException(400, f"fee_payer doit être l'un de {FEE_PAYERS}")
     row = await db.upsert_aggregator_config(
         name,
         display_name=body.display_name,
@@ -370,6 +385,7 @@ async def admin_update_aggregator_fees(name: str, body: AggregatorConfigUpdate):
         mw_commission_type=body.mw_commission_type,
         mw_commission_value=body.mw_commission_value,
         active=body.active,
+        fee_payer=body.fee_payer,
     )
     if row is None:
         raise HTTPException(503, "Supabase non configuré")

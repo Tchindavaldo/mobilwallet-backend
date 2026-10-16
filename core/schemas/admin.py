@@ -101,6 +101,12 @@ class AggregatorConfigUpdate(BaseModel):
         description="Taux prélevé par l'agrégateur sur le brut (ex. 0.05 = 5%).",
         examples=[0.05],
     )
+    fee_payer: str | None = Field(
+        None, description="Qui paie les frais de l'agrégateur : 'customer' (pris au "
+        "client final, ex. DigiKUNTZ), 'app' (wallet marchand, répercutés sur l'app, "
+        "ex. pawaPay) ou 'platform' (supportés par MobileWallet).",
+        examples=["app"],
+    )
     mw_commission_type: str | None = Field(
         None, description="Type de commission MobileWallet : 'percent' ou 'flat'.",
         examples=["percent"],

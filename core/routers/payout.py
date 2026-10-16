@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 from core import registry
 from core.auth import AuthContext, require_api_key
 from core.config import settings
+from core import settlement
 from core.db import db
 from core.notifications import notify_settled
 from core.schemas.payout import PayoutRequest, PayoutResponse, PayoutResponseDebug
@@ -114,8 +115,12 @@ async def _execute_payout(
         end_user_ref=req.end_user_ref,
     )
 
-    # 1) Réservation atomique du solde (débit). Refus AVANT tout appel DigiKUNTZ.
-    reserved = await db.reserve_payout(app_id, req.amount, tx_id, req.currency)
+    # 1) Réservation atomique du solde (débit = montant + frais agrégateur si
+    #    imputés à l'app). Refus AVANT tout appel à l'agrégateur.
+    charges = await settlement.payout_charges(req.aggregator, req.account_bank_code, req.amount)
+    if charges["provider_fee"]:
+        await db.set_provider_fee(tx_id, charges["provider_fee"])
+    reserved = await db.reserve_payout(app_id, req.amount + charges["app_extra"], tx_id, req.currency)
     if not reserved or not reserved.get("ok"):
         balance = (reserved or {}).get("balance", 0)
         await db.update_payout(
@@ -125,9 +130,13 @@ async def _execute_payout(
             422,
             {"error": "insufficient_balance",
              "message": "Solde insuffisant pour effectuer ce virement.",
-             "balance": balance, "requested": req.amount, "currency": req.currency},
+             "balance": balance, "requested": req.amount + charges["app_extra"],
+             "provider_fee": charges["app_extra"], "currency": req.currency},
         )
     balance_after = reserved.get("balance_after")
+    if charges["platform_extra"]:
+        await db.debit_platform(charges["platform_extra"], transaction_id=tx_id,
+                                reason="payout_provider_fee")
 
     # 2) Initiation du virement chez DigiKUNTZ.
     payout_flow = _flow(req.aggregator)
@@ -135,14 +144,14 @@ async def _execute_payout(
         init = await payout_flow.initiate_payout(req)
     except payout_flow.PayoutUpstreamError as e:
         # Panne amont : rien n'est parti -> on rembourse le débit et on 503.
-        await _refund(app_id, req.amount, tx_id)
+        await _refund(app_id, req, tx_id)
         await db.update_payout(
             tx_id, status="failed", success=False,
             message=UPSTREAM_MESSAGES[e.code])
         raise HTTPException(503, {"code": e.code, "message": UPSTREAM_MESSAGES[e.code]})
     except Exception as e:  # noqa: BLE001 — refus/erreur non-amont
         log.warning("payout tx=%s: initiation échouée (%s)", tx_id, e)
-        await _refund(app_id, req.amount, tx_id)
+        await _refund(app_id, req, tx_id)
         await db.update_payout(
             tx_id, status="failed", success=False,
             message="Le virement n'a pas pu être initié.")
@@ -161,7 +170,7 @@ async def _execute_payout(
     # 3a) Verdict terminal immédiat (rare) : settle + notifie + rembourse si échec.
     if internal in ("successful", "failed", "cancelled"):
         if internal != "successful":
-            await _refund(app_id, req.amount, tx_id)
+            await _refund(app_id, req, tx_id)
         notify_settled(
             tx_id, internal, transaction_ref=transaction_ref,
             amount=req.amount, network=req.account_bank_code,
@@ -179,10 +188,13 @@ async def _execute_payout(
                    balance_after, debug)
 
 
-async def _refund(app_id: int, amount: int, tx_id: int) -> None:
-    """Rembourse (crédit compensatoire) le débit d'un payout échoué. Idempotent
-    sur (transaction_id, direction='credit')."""
-    await db.credit_app(app_id, amount, transaction_id=tx_id, reason="payout_refund")
+async def _refund(app_id: int, req: PayoutRequest, tx_id: int) -> None:
+    """Rembourse le débit d'un payout échoué : montant + frais imputés (cf.
+    core.settlement). Idempotent sur (transaction_id, direction='credit')."""
+    charges = await settlement.payout_charges(req.aggregator, req.account_bank_code, req.amount)
+    await settlement.refund_payout({
+        "app_id": app_id, "id": tx_id, "amount": req.amount,
+        "provider_fee": charges["provider_fee"], "aggregator": req.aggregator})
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +203,12 @@ async def _refund(app_id: int, amount: int, tx_id: int) -> None:
 # solde (admin de confiance) : le solde plateforme peut devenir négatif et se
 # recharger via POST /admin/platform/credit. Même suivi (polling auto + webhook).
 # ---------------------------------------------------------------------------
+async def _platform_total(req: PayoutRequest) -> int:
+    """Coût d'un payout plateforme : montant + frais agrégateur pris sur le wallet."""
+    charges = await settlement.payout_charges(req.aggregator, req.account_bank_code, req.amount)
+    return req.amount + charges["provider_fee"]
+
+
 async def execute_platform_payout(
     req: PayoutRequest, debug: bool = False,
 ) -> PayoutResponse | PayoutResponseDebug:
@@ -203,20 +221,20 @@ async def execute_platform_payout(
 
     tx_id = await db.insert_pending_payout(req.aggregator, req)
     # Débit plateforme SANS contrôle de solde (peut devenir négatif).
-    await db.debit_platform(req.amount, transaction_id=tx_id, currency=req.currency)
+    await db.debit_platform(await _platform_total(req), transaction_id=tx_id, currency=req.currency)
     balance_after = await db.get_platform_balance()
 
     payout_flow = _flow(req.aggregator)
     try:
         init = await payout_flow.initiate_payout(req)
     except payout_flow.PayoutUpstreamError as e:
-        await db.credit_platform(req.amount, reason="payout_refund", transaction_id=tx_id)
+        await db.credit_platform(await _platform_total(req), reason="payout_refund", transaction_id=tx_id)
         await db.update_payout(tx_id, status="failed", success=False,
                                message=UPSTREAM_MESSAGES[e.code])
         raise HTTPException(503, {"code": e.code, "message": UPSTREAM_MESSAGES[e.code]})
     except Exception as e:  # noqa: BLE001
         log.warning("platform payout tx=%s: initiation échouée (%s)", tx_id, e)
-        await db.credit_platform(req.amount, reason="payout_refund", transaction_id=tx_id)
+        await db.credit_platform(await _platform_total(req), reason="payout_refund", transaction_id=tx_id)
         await db.update_payout(tx_id, status="failed", success=False,
                                message="Le virement n'a pas pu être initié.")
         raise HTTPException(502, {"error": "payout_failed",
@@ -231,7 +249,7 @@ async def execute_platform_payout(
 
     if internal in ("successful", "failed", "cancelled"):
         if internal != "successful":
-            await db.credit_platform(req.amount, reason="payout_refund", transaction_id=tx_id)
+            await db.credit_platform(await _platform_total(req), reason="payout_refund", transaction_id=tx_id)
         notify_settled(tx_id, internal, transaction_ref=transaction_ref,
                        amount=req.amount, network=req.account_bank_code,
                        phone=req.account_number, provider_transaction_id=provider_id,
@@ -253,7 +271,7 @@ async def _finalize_platform_payout_bg(req, tx_id, provider_id, transaction_ref)
         verdict = await payout_flow.poll_payout_status(provider_id)
         status = verdict["status"]
         if status != "successful":
-            await db.credit_platform(req.amount, reason="payout_refund", transaction_id=tx_id)
+            await db.credit_platform(await _platform_total(req), reason="payout_refund", transaction_id=tx_id)
         await db.update_payout(tx_id, status=status, success=(status == "successful"),
                                message=verdict["message"], provider_id=provider_id,
                                settled_by=verdict.get("settled_by", "polling"))
@@ -269,7 +287,7 @@ async def _platform_payout_mock(req, debug):
     """Mode mock du payout plateforme (sans DigiKUNTZ, vraie compta plateforme)."""
     import random
     tx_id = await db.insert_pending_payout(req.aggregator, req)
-    await db.debit_platform(req.amount, transaction_id=tx_id, currency=req.currency)
+    await db.debit_platform(await _platform_total(req), transaction_id=tx_id, currency=req.currency)
     balance_after = await db.get_platform_balance()
     provider_id = f"mock_payout_{tx_id}"
     transaction_ref = f"mock_{tx_id}"
@@ -285,7 +303,7 @@ async def _mock_finalize_platform(req, tx_id, scenario, provider_id, transaction
     await asyncio.sleep(random.randint(1, 3))
     status = "successful" if scenario == "success" else "failed"
     if status != "successful":
-        await db.credit_platform(req.amount, reason="payout_refund", transaction_id=tx_id)
+        await db.credit_platform(await _platform_total(req), reason="payout_refund", transaction_id=tx_id)
     await db.update_payout(tx_id, status=status, success=(status == "successful"),
                            message=payout_flow.friendly_msg(status),
                            provider_id=provider_id, settled_by="polling")
@@ -303,7 +321,7 @@ async def _finalize_payout_bg(req, tx_id, app_id, provider_id, transaction_ref):
         verdict = await payout_flow.poll_payout_status(provider_id)
         status = verdict["status"]
         if status != "successful":
-            await _refund(app_id, req.amount, tx_id)
+            await _refund(app_id, req, tx_id)
         await db.update_payout(
             tx_id, status=status, success=(status == "successful"),
             message=verdict["message"], provider_id=provider_id,
@@ -323,7 +341,8 @@ async def _execute_payout_mock(req, app_id, api_key_id, debug):
     tx_id = await db.insert_pending_payout(
         req.aggregator, req, app_id=app_id, api_key_id=api_key_id,
         end_user_ref=req.end_user_ref)
-    reserved = await db.reserve_payout(app_id, req.amount, tx_id, req.currency)
+    charges = await settlement.payout_charges(req.aggregator, req.account_bank_code, req.amount)
+    reserved = await db.reserve_payout(app_id, req.amount + charges["app_extra"], tx_id, req.currency)
     if not reserved or not reserved.get("ok"):
         balance = (reserved or {}).get("balance", 0)
         await db.update_payout(tx_id, status="failed", success=False,
@@ -347,7 +366,7 @@ async def _mock_finalize_payout(req, tx_id, app_id, scenario, provider_id, trans
     await asyncio.sleep(random.randint(1, 3))
     status = "successful" if scenario == "success" else "failed"
     if status != "successful":
-        await _refund(app_id, req.amount, tx_id)
+        await _refund(app_id, req, tx_id)
     await db.update_payout(tx_id, status=status, success=(status == "successful"),
                            message=payout_flow.friendly_msg(status),
                            provider_id=provider_id, settled_by="polling")

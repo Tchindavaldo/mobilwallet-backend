@@ -6,12 +6,11 @@ import logging
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
-from core import runtime
+from core import runtime, settlement
 from core.base import PaymentResult
 from core.config import settings
 from core.db import db
 from core.error_tracking import build_errors
-from core.fees import compute_fees
 from core.schemas.payments import PayRequest, PayResponse, PayResponseDebug
 from core.upstream_errors import OPERATOR_UNAVAILABLE, UPSTREAM_CODES, UPSTREAM_MESSAGES
 
@@ -20,30 +19,13 @@ log = logging.getLogger("ai_browser2")
 
 async def _credit_on_success(
     app_id: int | None, tx_id: int | None,
-    result: PaymentResult, amount: int, aggregator: str = "",
+    result: PaymentResult, amount: int, aggregator: str = "", network: str = "",
 ) -> None:
-    """Split comptable d'un payin réussi : crédite l'app (net) et la plateforme (commission).
-
-    Flux : brut → commission MW (défaut agrégateur ou surcharge app) → app + plateforme.
-    Les frais DigiKUNTZ sont prélevés directement sur le client via USSD (hors comptabilité).
-    Idempotent (unique transaction_id/direction en BD). No-op si pas de succès,
-    pas d'app, ou pas de tx_id."""
-    if not (app_id and tx_id and result.final_status == "successful"):
+    """Split comptable d'un payin réussi (frais agrégateur, commission MW, app) :
+    délégué à core.settlement. No-op si pas de succès."""
+    if result.final_status != "successful":
         return
-    agg_config = await db.get_aggregator_config(aggregator) if aggregator else None
-    app_config = await db.get_app_commission(app_id) if app_id else None
-    breakdown = compute_fees(amount, agg_config, app_config)
-    log.info(
-        "payin split tx=%s: gross=%s mw_comm=%s app=%s platform=%s (agg=%s app_override=%s)",
-        tx_id, breakdown.gross, breakdown.mw_commission,
-        breakdown.app_amount, breakdown.platform_amount,
-        aggregator, app_config is not None,
-    )
-    await db.credit_app(app_id, breakdown.app_amount,
-                        transaction_id=tx_id, reason="payin_successful")
-    if breakdown.platform_amount > 0:
-        await db.credit_platform(breakdown.platform_amount,
-                                 transaction_id=tx_id, reason="payin_fees")
+    await settlement.credit_payin(app_id, tx_id, amount, aggregator, network)
 
 
 # Délai d'expiration d'une demande USSD côté opérateur (fait mécanique).

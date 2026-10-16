@@ -232,6 +232,37 @@ class LedgerMixin:
             log.warning("get_aggregator_config(%s) failed: %s", name, e)
             return None
 
+    async def get_aggregator_fee_rate(self, name: str, network: str, operation: str) -> float:
+        """Taux de frais de l'agrégateur pour (réseau 'mtn'|'orange', opération
+        'deposit'|'payout'). 0 si absent ou BD indisponible."""
+        if not self.enabled or not name or not network:
+            return 0.0
+
+        def _select():
+            res = (self._client.table("aggregator_fee_rates").select("rate")
+                   .eq("aggregator", name).eq("network", network)
+                   .eq("operation", operation).limit(1).execute())
+            return float(res.data[0]["rate"]) if res.data else 0.0
+
+        try:
+            return await asyncio.to_thread(_select)
+        except Exception as e:  # noqa: BLE001
+            log.warning("get_aggregator_fee_rate(%s,%s,%s) failed: %s", name, network, operation, e)
+            return 0.0
+
+    async def set_provider_fee(self, tx_id: int, fee: int) -> None:
+        """Enregistre les frais agrégateur réellement imputés à une transaction."""
+        if not self.enabled or tx_id is None:
+            return
+
+        def _update():
+            self._client.table("transactions").update({"provider_fee": int(fee)}).eq("id", tx_id).execute()
+
+        try:
+            await asyncio.to_thread(_update)
+        except Exception as e:  # noqa: BLE001
+            log.warning("set_provider_fee(%s) failed: %s", tx_id, e)
+
     async def list_aggregator_configs(self) -> list[dict]:
         """Retourne toutes les configs d'agrégateurs (actifs ou non)."""
         if not self.enabled:
@@ -305,6 +336,7 @@ class LedgerMixin:
         mw_commission_type: str | None = None,
         mw_commission_value: float | None = None,
         active: bool | None = None,
+        fee_payer: str | None = None,
     ) -> dict | None:
         """Crée ou met à jour la config d'un agrégateur. Retourne la ligne."""
         if not self.enabled:
@@ -320,6 +352,8 @@ class LedgerMixin:
             patch["mw_commission_value"] = float(mw_commission_value)
         if active is not None:
             patch["active"] = active
+        if fee_payer is not None:
+            patch["fee_payer"] = fee_payer
 
         def _upsert():
             res = (self._client.table("aggregators")

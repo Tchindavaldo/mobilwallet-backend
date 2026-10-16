@@ -81,6 +81,24 @@
               "title": "Amount"
             },
             "description": "Simuler la ventilation pour ce montant (XAF)"
+          },
+          {
+            "name": "network",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Réseau pour la simulation (MTN | Orangemoney)",
+              "title": "Network"
+            },
+            "description": "Réseau pour la simulation (MTN | Orangemoney)"
           }
         ],
         "responses": {
@@ -1984,8 +2002,8 @@
         "tags": [
           "admin"
         ],
-        "summary": "Réconciliation Σ soldes apps + plateforme vs solde global DigiKUNTZ",
-        "description": "Contrôle l'invariant comptable : Σ soldes apps + solde plateforme doit égaler\nle solde réel du compte global DigiKUNTZ. Signale tout écart.",
+        "summary": "Réconciliation Σ soldes apps + plateforme vs soldes réels des agrégateurs",
+        "description": "Contrôle l'invariant comptable : Σ soldes apps + solde plateforme doit égaler\nla somme des soldes RÉELS chez les agrégateurs (compte global DigiKUNTZ +\nwallets pawaPay XAF). Un agrégateur injoignable rend le contrôle incomplet.",
         "operationId": "admin_reconciliation_admin_reconciliation_get",
         "parameters": [
           {
@@ -2524,6 +2542,21 @@
             "description": "Taux prélevé par l'agrégateur sur le brut (ex. 0.05 = 5%).",
             "examples": [
               0.05
+            ]
+          },
+          "fee_payer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Payer",
+            "description": "Qui paie les frais de l'agrégateur : 'customer' (pris au client final, ex. DigiKUNTZ), 'app' (wallet marchand, répercutés sur l'app, ex. pawaPay) ou 'platform' (supportés par MobileWallet).",
+            "examples": [
+              "app"
             ]
           },
           "mw_commission_type": {
