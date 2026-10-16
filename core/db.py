@@ -12,23 +12,25 @@ Tables (see schema/supabase.sql):
   - app_ledger(id, app_id, direction, amount, transaction_id, reason, created_at)
       + vue app_balance — comptabilité par app (cf. core/db_ledger.py).
 
-La comptabilité par app (soldes / payouts) vit dans le mixin LedgerMixin
-(core/db_ledger.py), hérité par Database, pour garder ce fichier sous la limite.
+Mixins hérités par Database (un fichier par domaine, sous le plafond de taille) :
+  - core/db_ledger.py      : comptabilité par app/agrégateur, payouts ;
+  - core/db_diagnostics.py : erreurs détectées et traces IA ;
+  - core/db_config.py      : réglages à chaud et templates curl.
 """
 
 import asyncio
-import dataclasses
 import logging
-from typing import Any
 
-from core.base import CurlTemplate, PaymentRequest, PaymentResult
+from core.base import PaymentRequest, PaymentResult
 from core.config import settings
+from core.db_config import ConfigMixin
+from core.db_diagnostics import DiagnosticsMixin
 from core.db_ledger import LedgerMixin
 
 log = logging.getLogger("ai_browser2")
 
 
-class Database(LedgerMixin):
+class Database(LedgerMixin, DiagnosticsMixin, ConfigMixin):
     def __init__(self) -> None:
         self._client = None
         if settings.supabase_url and settings.supabase_key:
@@ -124,7 +126,7 @@ class Database(LedgerMixin):
     async def insert_pending(
         self, aggregator: str, mode: str, req: PaymentRequest,
         *, app_id: int | None = None, api_key_id: int | None = None,
-        end_user_ref: str | None = None,
+        end_user_ref: str | None = None, callback_url: str | None = None,
     ) -> int | None:
         """Insert the transaction as 'pending' at the start; return its id.
 
@@ -150,6 +152,8 @@ class Database(LedgerMixin):
             row["api_key_id"] = api_key_id
         if end_user_ref is not None:
             row["end_user_ref"] = end_user_ref
+        if callback_url:
+            row["callback_url"] = callback_url
 
         def _insert():
             res = self._client.table("transactions").insert(row).execute()
@@ -195,7 +199,8 @@ class Database(LedgerMixin):
             return None
 
     async def update_status_by_provider_id(
-        self, provider_id: str, status: str, message: str = ""
+        self, provider_id: str, status: str, message: str = "",
+        settled_by: str = "webhook",
     ) -> None:
         """MAJ le statut d'une transaction via son id provider (appelé par le
         webhook). Idempotent : n'écrase PAS un verdict terminal déjà posé."""
@@ -203,7 +208,7 @@ class Database(LedgerMixin):
             return
         _TERMINAL = {"successful", "failed", "cancelled"}
         patch = {"status": status, "success": status == "successful",
-                 "settled_by": "webhook"}
+                 "settled_by": settled_by}
         if message:
             patch["message"] = message
         # Mêmes timestamps que le settle polling (update_transaction), pour que la
@@ -272,97 +277,6 @@ class Database(LedgerMixin):
         await self.save_trace(tx_id, result.trace)
         # Persist detailed errors (table transaction_errors).
         await self.save_errors(tx_id, result.errors)
-
-    async def save_errors(self, tx_id: int, errors: list[dict] | None) -> None:
-        """Insert one transaction_errors row per detailed error, linked to tx_id.
-
-        Each error dict: {engine, source, category, message, detail, turn}.
-        No-op if there are no errors (a successful transaction logs none).
-        """
-        if not self.enabled or tx_id is None or not errors:
-            return
-        rows = [
-            {
-                "transaction_id": tx_id,
-                "engine": e.get("engine", ""),
-                "source": e.get("source", ""),
-                "category": e.get("category"),
-                "message": e.get("message"),
-                "detail": e.get("detail"),
-                "turn": e.get("turn"),
-            }
-            for e in errors
-        ]
-
-        def _insert():
-            self._client.table("transaction_errors").insert(rows).execute()
-
-        await self._run(_insert)
-
-    async def get_errors(self, transaction_id: int) -> list[dict]:
-        """Return the detailed error rows for a transaction (newest first)."""
-        if not self.enabled:
-            return []
-
-        def _select():
-            res = (
-                self._client.table("transaction_errors")
-                .select("*")
-                .eq("transaction_id", transaction_id)
-                .order("created_at", desc=True)
-                .execute()
-            )
-            return res.data or []
-
-        try:
-            return await asyncio.to_thread(_select)
-        except Exception as e:  # noqa: BLE001
-            log.warning("get_errors failed: %s", e)
-            return []
-
-    async def save_trace(self, tx_id: int, trace: list[dict]) -> None:
-        """Insert one transaction_traces row per AI turn, linked to tx_id."""
-        if not self.enabled or tx_id is None or not trace:
-            return
-        rows = [
-            {
-                "transaction_id": tx_id,
-                "turn": e.get("turn"),
-                "url": e.get("url"),
-                "elements": e.get("elements"),
-                "thought": e.get("thought"),
-                "actions": e.get("actions"),
-                "objective_reached": e.get("objective_reached", False),
-                "error": e.get("error"),
-            }
-            for e in trace
-        ]
-
-        def _insert():
-            self._client.table("transaction_traces").insert(rows).execute()
-
-        await self._run(_insert)
-
-    async def get_traces(self, transaction_id: int) -> list[dict]:
-        """Return the per-turn trace rows for a transaction, ordered by turn."""
-        if not self.enabled:
-            return []
-
-        def _select():
-            res = (
-                self._client.table("transaction_traces")
-                .select("*")
-                .eq("transaction_id", transaction_id)
-                .order("turn")
-                .execute()
-            )
-            return res.data or []
-
-        try:
-            return await asyncio.to_thread(_select)
-        except Exception as e:  # noqa: BLE001
-            log.warning("get_traces failed: %s", e)
-            return []
 
     async def cancel_pending(self, tx_id: int, *, app_id: int | None = None) -> dict | None:
         """Force-settle a stuck 'pending' transaction to 'cancelled'.
@@ -435,168 +349,6 @@ class Database(LedgerMixin):
         except Exception as e:  # noqa: BLE001
             log.warning("get_transaction failed: %s", e)
             return None
-
-    # --- app_settings (réglages clé/valeur modifiables via API) ---
-    async def get_setting(self, key: str) -> str | None:
-        """Return the stored value for `key`, or None (missing / DB disabled)."""
-        if not self.enabled:
-            return None
-
-        def _select():
-            res = (
-                self._client.table("app_settings")
-                .select("value")
-                .eq("key", key)
-                .limit(1)
-                .execute()
-            )
-            return res.data[0]["value"] if res.data else None
-
-        try:
-            return await asyncio.to_thread(_select)
-        except Exception as e:  # noqa: BLE001
-            log.warning("get_setting(%s) failed: %s", key, e)
-            return None
-
-    async def set_setting(self, key: str, value: str) -> bool:
-        """Upsert a setting; True on success. No-op (False) if DB disabled."""
-        if not self.enabled:
-            return False
-
-        def _upsert():
-            self._client.table("app_settings").upsert(
-                {"key": key, "value": str(value)}, on_conflict="key"
-            ).execute()
-            return True
-
-        try:
-            return await asyncio.to_thread(_upsert)
-        except Exception as e:  # noqa: BLE001
-            log.warning("set_setting(%s) failed: %s", key, e)
-            return False
-
-    async def get_max_tabs(self, default: int) -> int:
-        """Persisted max-tabs-per-browser, falling back to `default` (env)."""
-        raw = await self.get_setting("max_tabs_per_browser")
-        try:
-            return int(raw) if raw is not None else default
-        except (ValueError, TypeError):
-            return default
-
-    async def set_max_tabs(self, value: int) -> bool:
-        """Persist the max-tabs-per-browser threshold."""
-        return await self.set_setting("max_tabs_per_browser", str(int(value)))
-
-    # --- curl templates (deduced by browser mode, reused by replay mode) ---
-    async def save_template(
-        self, aggregator: str, template: CurlTemplate, force: bool = False
-    ) -> dict | None:
-        """Append a NEW active version ONLY if it differs from the current active
-        one (or always, when force=True). Never overwrites: the previous version
-        is deactivated and kept as history. Rows stay grouped per aggregator
-        (one active each)."""
-        if not self.enabled:
-            return None
-        payload = dataclasses.asdict(template)
-        # db_id n'est qu'une référence runtime (cf. CurlTemplate) : jamais
-        # persistée dans le jsonb (sinon elle fausserait la comparaison
-        # "template identique" et polluerait les versions).
-        payload.pop("db_id", None)
-
-        def _save_if_changed():
-            client = self._client
-            # Current active template for this aggregator (if any).
-            cur = (
-                client.table("curl_templates")
-                .select("id, template")
-                .eq("aggregator", aggregator)
-                .eq("is_active", True)
-                .limit(1)
-                .execute()
-            )
-            if not force and cur.data and cur.data[0].get("template") == payload:
-                return cur.data[0]  # identical -> nothing to add
-            # Deactivate the old active version, then insert the new active one.
-            # Le nouveau template est 'untested' tant qu'un replay ne l'a pas
-            # validé (status posé ensuite par mark_template_status).
-            if cur.data:
-                client.table("curl_templates").update({"is_active": False}).eq(
-                    "id", cur.data[0]["id"]
-                ).execute()
-            res = (
-                client.table("curl_templates")
-                .insert({"aggregator": aggregator, "template": payload,
-                         "is_active": True, "status": "untested"})
-                .execute()
-            )
-            return res.data[0] if res.data else None
-
-        return await self._run(_save_if_changed)
-
-    async def mark_template_status(self, template_id: int, status: str) -> None:
-        """Marque la fiabilité d'un template ('working' | 'failed' | 'untested').
-
-        Appelé par le replay : 'working' si le rejeu a abouti, 'failed' si le
-        template est inexploitable (clé invalide/absente, chiffrement KO). Un
-        'failed' n'est plus jamais re-sélectionné par load_template.
-        """
-        if not self.enabled or not template_id:
-            return
-
-        def _update():
-            self._client.table("curl_templates").update(
-                {"status": status}
-            ).eq("id", template_id).execute()
-
-        try:
-            await self._run(_update)
-        except Exception as e:  # noqa: BLE001
-            log.warning("mark_template_status(%s, %s) failed: %s", template_id, status, e)
-
-    async def load_template(self, aggregator: str) -> CurlTemplate | None:
-        """Charge le MEILLEUR template rejouable pour cet agrégateur.
-
-        Priorité : le dernier 'working' (a déjà servi un replay réussi), à
-        défaut le dernier 'untested' (déduit, jamais rejoué). Un 'failed' n'est
-        JAMAIS retourné. L'id BD est joint (db_id) pour que le replay puisse
-        ensuite marquer ce template working/failed selon le résultat.
-        """
-        if not self.enabled:
-            return None
-
-        def _select():
-            # On ne s'appuie plus sur is_active : on classe par fiabilité puis
-            # récence, en excluant les 'failed'.
-            res = (
-                self._client.table("curl_templates")
-                .select("id, template, status")
-                .eq("aggregator", aggregator)
-                .neq("status", "failed")
-                .order("created_at", desc=True)
-                .execute()
-            )
-            rows = res.data or []
-            # working d'abord (le plus récent), sinon untested le plus récent.
-            for wanted in ("working", "untested"):
-                for row in rows:
-                    if row.get("status") == wanted:
-                        return row
-            return None
-
-        try:
-            row: dict[str, Any] | None = await asyncio.to_thread(_select)
-            if row:
-                data = row.get("template", {}) or {}
-                fields = {f.name for f in dataclasses.fields(CurlTemplate)}
-                tpl = CurlTemplate(**{k: v for k, v in data.items() if k in fields})
-                tpl.db_id = row.get("id")
-                log.info("load_template: id=%s status=%s (agg=%s)",
-                         tpl.db_id, row.get("status"), aggregator)
-                return tpl
-        except Exception as e:  # noqa: BLE001
-            log.warning("load_template failed: %s", e)
-        return None
-
 
 # Single shared instance.
 db = Database()

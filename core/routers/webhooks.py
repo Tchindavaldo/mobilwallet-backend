@@ -8,9 +8,7 @@ import logging
 
 from fastapi import APIRouter
 
-from core.db import db
 from core import settlement
-from core.notifications import notify_settled
 
 log = logging.getLogger("ai_browser2")
 
@@ -38,39 +36,8 @@ async def digikuntz_webhook(payload: dict):
     if provider_id and internal in ("successful", "failed", "cancelled"):
         status_poll.registry.deliver(
             provider_id, {"status": internal, "raw": raw, "data": payload.get("data")})
-        await _settle(provider_id, internal, f"Webhook DigiKUNTZ: {raw}")
+        await settlement.settle_verdict(provider_id, internal, f"Webhook DigiKUNTZ: {raw}")
     return {"received": True}
-
-
-async def _settle(provider_id: str, internal: str, message: str) -> None:
-    """MAJ BD + comptabilité + notification client pour un verdict terminal
-    reçu d'un agrégateur. Commun à tous les webhooks ; idempotent."""
-    # MAJ la ligne BD si on la retrouve (settle redondant mais idempotent).
-    row = await db.get_transaction_by_provider_id(provider_id)
-    if row:
-        await db.update_status_by_provider_id(provider_id, internal,
-                                              message=message)
-        # Comptabilité (idempotente, via ledger) :
-        #   - un PAYIN réussi crédite le solde de l'app ;
-        #   - un PAYOUT échoué/annulé rembourse le débit réservé à l'initiation.
-        # (Un payout réussi ne fait rien : le débit reste.)
-        row_type = (row.get("type") or "payin").lower()
-        app_id = row.get("app_id")
-        if app_id is not None and row.get("id"):
-            if row_type == "payin" and internal == "successful":
-                # Split : frais agrégateur (selon fee_payer), commission MW, app.
-                await settlement.credit_payin(app_id, row["id"], row.get("amount", 0),
-                                              row.get("aggregator", ""), row.get("network", ""))
-            elif row_type == "payout" and internal in ("failed", "cancelled"):
-                await settlement.refund_payout(row)
-        # Notifie l'app du verdict (idempotent : si le polling a déjà notifié
-        # ce (tx, event), la réservation l'empêche d'envoyer en double).
-        notify_settled(
-            row["id"], internal, transaction_ref=row.get("transaction_ref", ""),
-            amount=row.get("amount", 0), network=row.get("network", ""),
-            phone=row.get("phone", ""), end_user_ref=row.get("end_user_ref"),
-            provider_transaction_id=provider_id,
-        )
 
 
 @router.post("/webhook/pawapay", tags=["system"],
@@ -98,5 +65,5 @@ async def pawapay_webhook(payload: dict):
     if provider_id and internal in client.TERMINAL:
         client.registry.deliver(
             provider_id, {"status": internal, "raw": raw, "failure": failure})
-        await _settle(provider_id, internal, f"Webhook pawaPay: {raw}")
+        await settlement.settle_verdict(provider_id, internal, f"Webhook pawaPay: {raw}")
     return {"received": True}

@@ -405,6 +405,7 @@ class LedgerMixin:
     async def insert_pending_payout(
         self, aggregator: str, req, *, app_id: int | None = None,
         api_key_id: int | None = None, end_user_ref: str | None = None,
+        callback_url: str | None = None,
     ) -> int | None:
         """Insère un payout 'pending' (type='payout') ; retourne son id.
 
@@ -427,6 +428,8 @@ class LedgerMixin:
             row["api_key_id"] = api_key_id
         if end_user_ref is not None:
             row["end_user_ref"] = end_user_ref
+        if callback_url:
+            row["callback_url"] = callback_url
 
         def _insert():
             res = self._client.table("transactions").insert(row).execute()

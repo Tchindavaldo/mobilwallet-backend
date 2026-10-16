@@ -41,7 +41,8 @@ ai_browser2/
 │   │   │                         Crédite le solde de l'app (app_ledger) au succès payin.
 │   │   ├── payout.py             /payout (virement sortant) : garde anti-doublon par
 │   │   │                         bénéficiaire, RÉSERVE atomique du solde (db.reserve_payout),
-│   │   │                         initiate_payout, poll/webhook -> verdict, REMBOURSE si échec.
+│   │   │                         initiate_payout, webhook (+ poll DigiKUNTZ) -> verdict, REMBOURSE si échec.
+│   │   │                         GET /payout/{ref}/check : 1 appel statut agrégateur à la demande.
 │   │   ├── transactions.py       /transactions*, /status/{ref}, /cancel, /balance (scopés à l'app).
 │   │   ├── templates.py          /aggregators/{name}/template (consulter/poser le replay).
 │   │   ├── webhooks.py           /webhook/digikuntz + /webhook/pawapay (callbacks statut entrants,
@@ -78,8 +79,10 @@ ai_browser2/
 │   ├── config.py                 settings centralisés depuis .env (DigiKUNTZ, FLW, LLM, Supabase,
 │   │                             retry_window_* par réseau, max_tabs_per_browser, mock_payments,
 │   │                             digikuntz.use_callback).
-│   ├── db.py                     Couche Supabase async (no-op si non configuré) : transactions,
-│   │                             curl_templates, transaction_traces, transaction_errors, app_settings.
+│   ├── db.py                     Couche Supabase async (no-op si non configuré) : transactions (audit, statut, annulation) ;
+│   │                             (core/db_diagnostics.py, core/db_config.py, core/db_ledger.py en mixins).
+│   ├── db_diagnostics.py         DiagnosticsMixin (hérité par Database) : transaction_errors, traces IA.
+│   ├── db_config.py              ConfigMixin (hérité par Database) : réglages app_settings, templates curl.
 │   ├── db_ledger.py              LedgerMixin (hérité par Database) : comptabilité —
 │   │                             app_ledger (credit_app/get_app_balance/reserve_payout/backfill/total),
 │   │                             platform_ledger (credit_platform/debit_platform/get_platform_balance),
@@ -88,7 +91,8 @@ ai_browser2/
 │   ├── fees.py                   Calcul PUR de ventilation (compute_fees / fees_info / fee_payer) :
 │   │                             brut → frais agrégateur (selon fee_payer) → commission MW → app + plateforme.
 │   ├── settlement.py             Imputation en compta (commune à tous les agrégateurs) : credit_payin,
-│   │                             payout_charges, refund_payout. Résout taux + fee_payer en BD.
+│   │                             payout_charges, refund_payout, settle_verdict (verdict terminal -> BD + compta + notif).
+│   │                             Résout taux + fee_payer en BD.
 │   ├── browser.py                BrowserSession (1 transaction = 1 contexte isolé : page, capture
 │   │                             réseau, frame active, snapshot, actions, wait_for_page_change) +
 │   │                             BrowserController (POOL : acquire/release_session, N sessions par
@@ -128,7 +132,8 @@ ai_browser2/
 │       ├── client.py             HTTP pawaPay : initiate_deposit/payout, fetch_status, soldes,
 │       │                         mapping statuts (COMPLETED/FAILED/… -> interne), MSISDN 237…,
 │       │                         providers MTN_MOMO_CMR / ORANGE_CMR, poll_until_final (sans
-│       │                         timeout, écoute le webhook via son VerdictRegistry).
+│       │                         timeout, écoute le webhook via son VerdictRegistry) ; wait_webhook (payouts :
+│       │                         webhook seul, aucun polling).
 │       ├── aggregator.py         PawapayAggregator (direct_api=True) : pay_direct -> ussd_sent +
 │       │                         poll_after_close ; finalize_after_close pose le statut final.
 │       │                         Hooks navigateur/replay du contrat = NotImplementedError.
@@ -298,7 +303,10 @@ C'est donc à **nous** de tenir le **solde de chaque app**.
 4. `initiate_payout` (`POST {base}/payout`). Panne amont → **503** + remboursement
    du débit ; refus immédiat → `failed` + remboursement.
 5. Réponse immédiate `pending` ; `poll_payout_status` (hors requête) attend le
-   verdict terminal (mapping `payout_*`, registre webhook⇄polling, sans timeout).
+   verdict terminal (DigiKUNTZ : registre webhook⇄polling ; pawaPay : webhook seul,
+   pas de polling). `GET /payout/{ref}/check` interroge l'agrégateur UNE fois à la
+   demande et applique le verdict s'il est final (`settlement.settle_verdict`,
+   `settled_by = manual_check`).
 6. Verdict : `successful` → le débit reste ; `failed`/`cancelled` → **remboursement**
    (crédit compensatoire idempotent, reason `payout_refund`). Verdict poussé au
    client via webhook signé + Socket.IO ; consultable par `GET /status/{ref}`.

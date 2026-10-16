@@ -144,3 +144,18 @@ async def poll_payout_status(provider_id: str) -> dict:
     finally:
         if provider_id:
             status_poll.registry.close(provider_id)
+
+
+async def check_payout_status(provider_id: str) -> dict | None:
+    """UN appel statut DigiKUNTZ (à la demande). Retourne {status, raw, message,
+    terminal} ou None si injoignable. Un terminal est déposé dans le registre."""
+    res = await status_poll.fetch_status(provider_id)
+    if res is None:
+        return None
+    status = res["internal"]
+    terminal = status in _TERMINAL
+    if terminal:
+        status_poll.registry.deliver(
+            provider_id, {"status": status, "raw": res["raw"], "data": res.get("data")})
+    return {"status": status, "raw": res["raw"], "terminal": terminal,
+            "message": friendly_msg(status)}

@@ -764,6 +764,62 @@
         }
       }
     },
+    "/payout/{transaction_ref}/check": {
+      "get": {
+        "tags": [
+          "payout"
+        ],
+        "summary": "Vérifier le statut d'un virement chez l'agrégateur",
+        "description": "Interroge UNE fois l'agrégateur sur un virement de votre app (pas de\npolling : le verdict arrive normalement par webhook). Si le statut est final\n(`successful`/`failed`/`cancelled`), il est appliqué tout de suite\n(BD + remboursement si échec + notification).",
+        "operationId": "check_payout_payout__transaction_ref__check_get",
+        "parameters": [
+          {
+            "name": "transaction_ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Transaction Ref"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Aucun virement pour cette référence."
+          },
+          "502": {
+            "description": "Agrégateur injoignable, réessayez."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/transactions": {
       "get": {
         "tags": [
