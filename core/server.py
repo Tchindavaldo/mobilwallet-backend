@@ -61,8 +61,9 @@ async def _resume_unsettled() -> None:
         try:
             expiry = aggregator_ops.get(tx["aggregator"], "PAGE_EXPIRY_S")
             created = datetime.fromisoformat(tx["created_at"].replace("Z", "+00:00"))
-            age = (datetime.now(timezone.utc) - created).total_seconds()
-            status_check.schedule_check(ref, expiry + 60 - age)
+            remaining = expiry + 60 - (datetime.now(timezone.utc) - created).total_seconds()
+            if remaining > 5 + i * 0.5:  # déjà expirée : la vérif immédiate suffit
+                status_check.schedule_check(ref, remaining)
         except Exception as e:  # noqa: BLE001
             log.warning("reprise vérif page %s : %s", ref, e)
     if rows:
