@@ -66,7 +66,7 @@ FAILURE_MESSAGES_FR = {
     "INVALID_AMOUNT": "Montant invalide.",
     "AMOUNT_OUT_OF_BOUNDS": "Montant hors des limites autorisées par l'opérateur.",
     "INVALID_PROVIDER": "Opérateur non pris en charge pour ce numéro.",
-    "PROVIDER_TEMPORARILY_UNAVAILABLE": "L'opérateur Mobile Money est momentanément indisponible. Réessayez plus tard.",
+    "PROVIDER_TEMPORARILY_UNAVAILABLE": "{net} est momentanément indisponible. Réessayez plus tard ou utilisez {other}.",
     "INVALID_CURRENCY": "Devise non prise en charge.",
     "DUPLICATE_METADATA_FIELD": "Requête invalide.",
     "INVALID_INPUT": "Requête invalide.",
@@ -232,12 +232,31 @@ async def fetch_balances() -> list | None:
     return None if body is None else body.get("balances", [])
 
 
-def failure_message(failure: dict | None) -> str:
-    """Message FR pour le client ; repli sur le message pawaPay si code inconnu."""
+_NETWORK_NAMES = {"orange": "Orange Money", "mtn": "MTN Mobile Money"}
+
+
+def _network_names(network: str | None) -> tuple[str, str]:
+    """(réseau concerné, autre réseau) en clair ; génériques si réseau inconnu."""
+    key = "orange" if (network or "").lower().startswith("orange") else (
+        "mtn" if (network or "").lower().startswith("mtn") else "")
+    if not key:
+        return "L'opérateur Mobile Money", "un autre réseau"
+    other = "mtn" if key == "orange" else "orange"
+    return _NETWORK_NAMES[key], _NETWORK_NAMES[other]
+
+
+def failure_message(failure: dict | None, network: str | None = None) -> str:
+    """Message FR pour le client ; repli sur le message pawaPay si code inconnu.
+
+    `network` (Orangemoney/MTN/ORANGEMONEY) permet de nommer le réseau concerné."""
     if not failure:
         return ""
     code = failure.get("failureCode") or ""
-    return (FAILURE_MESSAGES_FR.get(code) or failure.get("failureMessage") or code)
+    msg = FAILURE_MESSAGES_FR.get(code)
+    if msg:
+        net, other = _network_names(network)
+        return msg.format(net=net, other=other)
+    return failure.get("failureMessage") or code
 
 
 async def poll_until_final(kind: str, provider_id: str) -> dict:
