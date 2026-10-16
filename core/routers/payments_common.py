@@ -133,7 +133,7 @@ async def _guard_duplicate(req: PayRequest) -> None:
     # comptée depuis la VALIDATION USSD (validated_at). Fallback created_at.
     if status == "successful":
         elapsed = runtime.seconds_since(last.get("validated_at") or last.get("created_at"))
-        window = settings.retry_window_for(last.get("network", ""))
+        window = settings.retry_window_success_s
         if elapsed is not None and elapsed < window:
             remaining = int(window - elapsed)
             raise HTTPException(
