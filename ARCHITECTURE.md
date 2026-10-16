@@ -271,8 +271,12 @@ C'est donc à **nous** de tenir le **solde de chaque app**.
   commission (− frais si payer=platform). Invariant : app + plateforme = ce que le
   wallet a réellement reçu. Idempotent (même `transaction_id`), donc aucun double
   crédit même si polling et webhook concourent.
-- **Payout** : débit de l'app = montant + frais (si payer=app) ; remboursement
-  identique si le virement échoue (`settlement.refund_payout`).
+- **Frais de retrait prépayés** (`aggregators.prepay_payout_fee`, pawaPay) : au dépôt,
+  l'app est créditée de B tel que B + frais_retrait(B) = reste ; la réserve va au
+  solde plateforme, qui paie ensuite les frais du payout. Retirer B ne coûte donc
+  plus rien à l'app.
+- **Payout** : débit de l'app = montant (+ frais si payer=app sans prépaiement) ;
+  remboursement identique si le virement échoue (`settlement.refund_payout`).
 - **Crédit au payin** : le split est appliqué quand un payin devient `successful`
   (settle polling OU webhook). `db.backfill_ledger_from_transactions()` (endpoint
   `POST /admin/ledger/backfill`) amorce les soldes depuis l'historique (sans split,

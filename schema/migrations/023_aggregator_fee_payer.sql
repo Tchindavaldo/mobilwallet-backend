@@ -8,11 +8,17 @@
 --                au débit d'un payout).
 --   'platform' : frais prélevés sur le wallet marchand et supportés par
 --                MobileWallet (déduits du solde plateforme).
+-- prepay_payout_fee (payer='app') : au dépôt, on retient AUSSI les frais de
+--   retrait futurs (gardés en réserve sur le solde plateforme) ; quand l'app
+--   retire son solde, les frais de retrait sont déjà payés.
 -- Les taux réels vivent dans aggregator_fee_rates (par réseau et opération).
 -- Idempotent.
 
 alter table aggregators
     add column if not exists fee_payer text not null default 'customer';
+
+alter table aggregators
+    add column if not exists prepay_payout_fee boolean not null default false;
 
 do $$ begin
     alter table aggregators add constraint aggregators_fee_payer_check
@@ -32,8 +38,9 @@ create table if not exists aggregator_fee_rates (
 -- l'audit et pour rembourser exactement ce qui a été débité sur un payout échoué.
 alter table transactions add column if not exists provider_fee integer not null default 0;
 
--- pawaPay prélève sur le wallet marchand ; frais répercutés sur l'app.
-update aggregators set fee_payer = 'app' where name = 'pawapay';
+-- pawaPay prélève sur le wallet marchand : le client de l'app paie les frais de
+-- dépôt ET prépaie ceux du retrait (MobileWallet ne paie rien).
+update aggregators set fee_payer = 'app', prepay_payout_fee = true where name = 'pawapay';
 
 -- Grille publique pawaPay Cameroun (https://www.pawapay.io/fees, hors taxes,
 -- « tiered ») : à ajuster selon le contrat.

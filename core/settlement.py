@@ -6,7 +6,7 @@ ici on résout la config en BD et on écrit dans le ledger.
 import logging
 
 from core.db import db
-from core.fees import compute_fees, fee_network, fee_payer, provider_fee
+from core.fees import compute_fees, fee_network, fee_payer, prepays_payout_fee, provider_fee
 
 log = logging.getLogger("ai_browser2")
 
@@ -25,10 +25,12 @@ async def credit_payin(app_id: int | None, tx_id: int | None, amount: int,
     agg_config = await db.get_aggregator_config(aggregator) if aggregator else None
     app_config = await db.get_app_commission(app_id)
     rate = await _rate(aggregator, network, "deposit")
-    b = compute_fees(amount, agg_config, app_config, rate)
-    log.info("payin split tx=%s: gross=%s provider_fee=%s (%s, payer=%s) mw_comm=%s "
-             "app=%s platform=%s", tx_id, b.gross, b.provider_fee, rate,
-             fee_payer(agg_config), b.mw_commission, b.app_amount, b.platform_amount)
+    payout_rate = await _rate(aggregator, network, "payout")
+    b = compute_fees(amount, agg_config, app_config, rate, payout_rate)
+    log.info("payin split tx=%s: gross=%s provider_fee=%s (%s, payer=%s) payout_reserve=%s "
+             "mw_comm=%s app=%s platform=%s", tx_id, b.gross, b.provider_fee, rate,
+             fee_payer(agg_config), b.payout_fee_reserve, b.mw_commission,
+             b.app_amount, b.platform_amount)
     if b.provider_fee:
         await db.set_provider_fee(tx_id, b.provider_fee)
     await db.credit_app(app_id, b.app_amount, transaction_id=tx_id, reason="payin_successful")
@@ -41,14 +43,15 @@ async def credit_payin(app_id: int | None, tx_id: int | None, amount: int,
 async def payout_charges(aggregator: str, network: str, amount: int) -> dict:
     """Ce qu'un payout coûte en compta : {provider_fee, app_extra, platform_extra}.
 
-    - app_extra : à ajouter au débit de l'app (fee_payer='app') ;
-    - platform_extra : à débiter de la plateforme (fee_payer='platform')."""
+    - app_extra : à ajouter au débit de l'app (fee_payer='app', non prépayé) ;
+    - platform_extra : à débiter de la plateforme (fee_payer='platform', ou frais
+      déjà prépayés au dépôt et mis en réserve sur le solde plateforme)."""
     agg_config = await db.get_aggregator_config(aggregator) if aggregator else None
     fee = provider_fee(amount, agg_config, await _rate(aggregator, network, "payout"))
-    payer = fee_payer(agg_config)
+    on_platform = fee_payer(agg_config) == "platform" or prepays_payout_fee(agg_config)
     return {"provider_fee": fee,
-            "app_extra": fee if payer == "app" else 0,
-            "platform_extra": fee if payer == "platform" else 0}
+            "app_extra": 0 if on_platform else fee,
+            "platform_extra": fee if on_platform else 0}
 
 
 async def refund_payout(row: dict) -> None:
@@ -59,8 +62,8 @@ async def refund_payout(row: dict) -> None:
         return
     amount, fee = int(row.get("amount") or 0), int(row.get("provider_fee") or 0)
     agg_config = await db.get_aggregator_config(row.get("aggregator", ""))
-    payer = fee_payer(agg_config)
-    await db.credit_app(app_id, amount + (fee if payer == "app" else 0),
+    on_platform = fee_payer(agg_config) == "platform" or prepays_payout_fee(agg_config)
+    await db.credit_app(app_id, amount + (0 if on_platform else fee),
                         transaction_id=tx_id, reason="payout_refund")
-    if payer == "platform" and fee:
+    if on_platform and fee:
         await db.credit_platform(fee, transaction_id=tx_id, reason="payout_refund")

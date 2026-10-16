@@ -35,6 +35,7 @@ from dataclasses import dataclass
 class FeeBreakdown:
     gross: int            # montant brut (ce que le client a payé)
     provider_fee: int     # frais agrégateur pris sur le wallet marchand (0 si 'customer')
+    payout_fee_reserve: int  # frais de RETRAIT prépayés au dépôt (gardés par la plateforme)
     mw_commission: int    # commission MobileWallet
     app_amount: int       # crédité à l'app
     platform_amount: int  # crédité à la plateforme MW (négatif si elle supporte les frais)
@@ -57,6 +58,11 @@ def fee_network(network: str | None) -> str:
     if n.startswith("mtn"):
         return "mtn"
     return ""
+
+
+def prepays_payout_fee(agg_config: dict | None) -> bool:
+    """Le client prépaie-t-il au dépôt les frais de retrait (payer='app' seulement) ?"""
+    return fee_payer(agg_config) == "app" and bool((agg_config or {}).get("prepay_payout_fee"))
 
 
 def provider_fee(amount: int, agg_config: dict | None, rate: float) -> int:
@@ -89,8 +95,14 @@ def compute_fees(
     agg_config: dict | None,
     app_config: dict | None = None,
     agg_fee_rate: float = 0.0,
+    payout_fee_rate: float = 0.0,
 ) -> FeeBreakdown:
     """Calcule la ventilation MW pour un payin de `gross` XAF.
+
+    `agg_fee_rate` : taux de frais de DÉPÔT de l'agrégateur.
+    `payout_fee_rate` : taux de frais de RETRAIT ; si `prepay_payout_fee`, on les
+    retient dès le dépôt : l'app est créditée de B tel que B + frais_retrait(B)
+    = ce qui reste, pour que retirer B plus tard soit déjà couvert.
 
     `agg_config` : ligne de la table `aggregators` (défaut agrégateur).
     `app_config` : dict avec mw_commission_type/value issus de la table `apps`
@@ -112,9 +124,16 @@ def compute_fees(
         mw_commission = min(mw_commission, max(gross - fee, 0))
         app_amount = gross - fee - mw_commission
         platform_amount = mw_commission
+    reserve = 0
+    if prepays_payout_fee(agg_config) and payout_fee_rate > 0 and app_amount > 0:
+        net = app_amount
+        app_amount = math.floor(net / (1 + payout_fee_rate))
+        reserve = net - app_amount
+        platform_amount += reserve
     return FeeBreakdown(
         gross=gross,
         provider_fee=fee,
+        payout_fee_reserve=reserve,
         mw_commission=mw_commission,
         app_amount=app_amount,
         platform_amount=platform_amount,
@@ -126,16 +145,18 @@ def fees_info(
     agg_config: dict | None,
     app_config: dict | None = None,
     agg_fee_rate: float = 0.0,
+    payout_fee_rate: float = 0.0,
 ) -> dict:
     """Ventilation sous forme de dict (pour les endpoints /fees)."""
     comm_type, comm_value = _resolve_commission(app_config, agg_config)
-    b = compute_fees(gross, agg_config, app_config, agg_fee_rate)
+    b = compute_fees(gross, agg_config, app_config, agg_fee_rate, payout_fee_rate)
     payer = fee_payer(agg_config)
     return {
         "gross": b.gross,
         "fee_payer": payer,
         "aggregator_fee_rate": agg_fee_rate,
         "aggregator_fee": b.provider_fee,
+        "payout_fee_reserve": b.payout_fee_reserve,
         "aggregator_fee_note": (
             "Prélevé par l'agrégateur directement sur le client (hors comptabilité MW)."
             if payer == "customer" else
