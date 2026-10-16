@@ -9,7 +9,7 @@ import logging
 from fastapi import APIRouter
 
 from core.db import db
-from core.fees import compute_fees
+from core import settlement
 from core.notifications import notify_settled
 
 log = logging.getLogger("ai_browser2")
@@ -58,22 +58,11 @@ async def _settle(provider_id: str, internal: str, message: str) -> None:
         app_id = row.get("app_id")
         if app_id and row.get("id"):
             if row_type == "payin" and internal == "successful":
-                # Split : commission MW (défaut agrégateur ou surcharge app) → plateforme, reste → app.
-                # Les frais DigiKUNTZ sont pris directement sur le client (hors comptabilité).
-                agg_config = await db.get_aggregator_config(row.get("aggregator", ""))
-                app_cfg = await db.get_app_commission(app_id)
-                breakdown = compute_fees(row.get("amount", 0), agg_config, app_cfg)
-                await db.credit_app(app_id, breakdown.app_amount,
-                                    transaction_id=row["id"],
-                                    reason="payin_successful")
-                if breakdown.platform_amount > 0:
-                    await db.credit_platform(breakdown.platform_amount,
-                                              transaction_id=row["id"],
-                                              reason="payin_fees")
+                # Split : frais agrégateur (selon fee_payer), commission MW, app.
+                await settlement.credit_payin(app_id, row["id"], row.get("amount", 0),
+                                              row.get("aggregator", ""), row.get("network", ""))
             elif row_type == "payout" and internal in ("failed", "cancelled"):
-                await db.credit_app(app_id, row.get("amount", 0),
-                                    transaction_id=row["id"],
-                                    reason="payout_refund")
+                await settlement.refund_payout(row)
         # Notifie l'app du verdict (idempotent : si le polling a déjà notifié
         # ce (tx, event), la réservation l'empêche d'envoyer en double).
         notify_settled(

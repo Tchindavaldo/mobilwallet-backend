@@ -125,7 +125,7 @@ FastAPI génère automatiquement la doc OpenAPI :
 | GET | `/admin/digikuntz/balance` | solde réel du compte global DigiKUNTZ |
 | GET | `/admin/pawapay/balance` | soldes réels des wallets pawaPay |
 | GET | `/admin/pawapay/config` | configuration pawaPay : opérateurs actifs, montants min/max dépôt/payout |
-| GET | `/admin/reconciliation` | Σ soldes apps + plateforme vs solde global |
+| GET | `/admin/reconciliation` | Σ soldes apps + plateforme vs soldes réels (DigiKUNTZ + pawaPay) |
 | GET | `/admin/platform/balance` | solde plateforme (argent propre MobileWallet) |
 | POST | `/admin/platform/credit` | recharger le solde plateforme |
 | POST | `/admin/platform/payout` | virement débité de la plateforme (sans contrôle de solde) |

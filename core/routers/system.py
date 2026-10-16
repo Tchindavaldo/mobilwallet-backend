@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 from core import registry
 from core import runtime
 from core.db import db
-from core.fees import fees_info
+from core.fees import fee_network, fee_payer, fees_info
 from core.schemas.system import MaxTabsRequest
 
 log = logging.getLogger("ai_browser2")
@@ -31,9 +31,7 @@ async def list_aggregators():
             {
                 "name": name,
                 "supported_networks": registry.get(name).supported_networks,
-                "aggregator_fee_rate": float(
-                    (configs.get(name) or {}).get("aggregator_fee_rate") or 0
-                ),
+                "fee_payer": fee_payer(configs.get(name)),
                 "mw_commission_type": (configs.get(name) or {}).get(
                     "mw_commission_type", "percent"
                 ),
@@ -51,6 +49,7 @@ async def list_aggregators():
 async def aggregator_fees(
     name: str,
     amount: Optional[int] = Query(None, description="Simuler la ventilation pour ce montant (XAF)"),
+    network: Optional[str] = Query(None, description="Réseau pour la simulation (MTN | Orangemoney)"),
 ):
     """Retourne les taux de frais de l'agrégateur et, si `amount` est fourni,
     la ventilation exacte (frais agrégateur, commission MW, montant crédité à l'app).
@@ -60,16 +59,24 @@ async def aggregator_fees(
     if name not in registry.names():
         raise HTTPException(404, f"Agrégateur '{name}' inconnu")
     config = await db.get_aggregator_config(name)
+    rates = {
+        f"{net}_{op}": await db.get_aggregator_fee_rate(name, net, op)
+        for net in ("mtn", "orange") for op in ("deposit", "payout")
+    }
     result: dict = {
         "aggregator": name,
-        "aggregator_fee_rate": float((config or {}).get("aggregator_fee_rate") or 0),
+        "fee_payer": fee_payer(config),
+        "aggregator_fee_rates": rates,
         "mw_commission_type": (config or {}).get("mw_commission_type", "percent"),
         "mw_commission_value": float((config or {}).get("mw_commission_value") or 0),
     }
     if amount is not None:
         if amount <= 0:
             raise HTTPException(400, "amount doit être > 0")
-        result["simulation"] = fees_info(amount, config)
+        net = fee_network(network)
+        if not net:
+            raise HTTPException(400, "network requis pour la simulation (MTN | Orangemoney)")
+        result["simulation"] = fees_info(amount, config, None, rates[f"{net}_deposit"])
     return result
 
 

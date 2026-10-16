@@ -108,7 +108,7 @@ async def _mock_finalize_after_delay(
     await db.update_transaction(tx_id, result)
 
     # Crédite le solde de l'app si succès (idempotent), puis notifie.
-    await _credit_on_success(app_id, tx_id, result, req.amount, req.aggregator)
+    await _credit_on_success(app_id, tx_id, result, req.amount, req.aggregator, req.network)
 
     # Envoyer les notifications (Socket + webhook)
     notify_settled(
@@ -265,7 +265,7 @@ async def _execute_payment(
         else:
             # Verdict déjà terminal (succès/échec avant USSD, panne) : on crédite
             # le solde si succès (idempotent), puis on notifie (no-op si non terminal).
-            await _credit_on_success(app_id, tx_id, result, req.amount, req.aggregator)
+            await _credit_on_success(app_id, tx_id, result, req.amount, req.aggregator, req.network)
             notify_settled(
                 tx_id, result, transaction_ref=result.transaction_id,
                 amount=req.amount, network=req.network, phone=req.phone,
@@ -349,7 +349,7 @@ async def _finalize_in_background(agg, payment, result, tx_id, req, engine_used,
             await agg.finalize_after_close(payment, result)
         result = _settle(result, engine_used)
         await db.update_transaction(tx_id, result)
-        await _credit_on_success(app_id, tx_id, result, req.amount, req.aggregator)
+        await _credit_on_success(app_id, tx_id, result, req.amount, req.aggregator, req.network)
         notify_settled(
             tx_id, result, transaction_ref=result.transaction_id,
             amount=req.amount, network=req.network, phone=req.phone,
