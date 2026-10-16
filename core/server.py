@@ -44,19 +44,29 @@ for noisy in ("httpx", "httpcore", "uvicorn.access", "hpack", "openai"):
 log = logging.getLogger("ai_browser2")
 
 
-async def _resume_page_checks() -> None:
-    """Après un redémarrage, re-planifie la vérification des pages de paiement
-    encore pending (les tâches en mémoire ont été perdues)."""
+async def _resume_unsettled() -> None:
+    """Après un redémarrage (redéploiement), les suivis en mémoire sont perdus.
+    On reprend chaque transaction non finale : une vérification chez
+    l'agrégateur tout de suite (rattrape un verdict arrivé pendant la coupure),
+    et pour une page de paiement une autre à son expiration (aucun webhook
+    n'arrive si le client l'abandonne). Le reste arrive par webhook."""
     from datetime import datetime, timezone
     from core import aggregator_ops, status_check
-    for tx in await db.list_pending_by_mode("page"):
+    rows = await db.list_unsettled()
+    for i, tx in enumerate(rows):
+        ref = tx.get("transaction_ref")
+        status_check.schedule_check(ref, 5 + i * 0.5)  # étalé : pas de rafale
+        if tx.get("mode") != "page":
+            continue
         try:
             expiry = aggregator_ops.get(tx["aggregator"], "PAGE_EXPIRY_S")
             created = datetime.fromisoformat(tx["created_at"].replace("Z", "+00:00"))
             age = (datetime.now(timezone.utc) - created).total_seconds()
-            status_check.schedule_check(tx["transaction_ref"], expiry + 60 - age)
+            status_check.schedule_check(ref, expiry + 60 - age)
         except Exception as e:  # noqa: BLE001
-            log.warning("reprise vérif page %s : %s", tx.get("transaction_ref"), e)
+            log.warning("reprise vérif page %s : %s", ref, e)
+    if rows:
+        log.info("Reprise de %d transaction(s) non finale(s) après démarrage", len(rows))
 
 
 @asynccontextmanager
@@ -75,7 +85,7 @@ async def lifespan(app: FastAPI):
         api_key=settings.deepseek_api_key,
     ))
 
-    await _resume_page_checks()
+    await _resume_unsettled()
 
     log.info("AI Browser 2 ready! Browser=%s, Model=%s",
              "headless" if headless else "visible",
