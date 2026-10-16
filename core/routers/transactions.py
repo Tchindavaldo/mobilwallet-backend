@@ -7,7 +7,7 @@ les transactions de ses propres apps. Une transaction d'une autre app renvoie
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from core import tenants
+from core import status_check, tenants
 from core.auth import AuthContext, require_api_key
 from core.db import db
 
@@ -47,6 +47,24 @@ async def app_balance(ctx: AuthContext = Depends(require_api_key)):
 async def transaction_status(transaction_ref: str, ctx: AuthContext = Depends(require_api_key)):
     """Récupère une transaction de votre app par sa référence."""
     return await _owned_tx(transaction_ref, ctx)
+
+
+@router.get(
+    "/status/{transaction_ref}/check",
+    tags=["transactions"],
+    summary="Vérifier le statut d'une transaction chez l'agrégateur",
+    responses={404: {"description": "Aucune transaction pour cette référence."},
+               502: {"description": "Agrégateur injoignable, réessayez."}},
+)
+async def check_transaction_status(transaction_ref: str,
+                                   ctx: AuthContext = Depends(require_api_key)):
+    """Interroge UNE fois l'agrégateur (pas de polling) sur une transaction de
+    votre app, payin ou payout. Un statut final est appliqué tout de suite
+    (BD + comptabilité + notification). Déjà finale : renvoie le statut en base."""
+    res = await status_check.check_transaction(await _owned_tx(transaction_ref, ctx))
+    if res is None:
+        raise HTTPException(502, "Agrégateur injoignable, réessayez.")
+    return res
 
 
 @router.get(

@@ -965,6 +965,62 @@
         }
       }
     },
+    "/status/{transaction_ref}/check": {
+      "get": {
+        "tags": [
+          "transactions"
+        ],
+        "summary": "Vérifier le statut d'une transaction chez l'agrégateur",
+        "description": "Interroge UNE fois l'agrégateur (pas de polling) sur une transaction de\nvotre app, payin ou payout. Un statut final est appliqué tout de suite\n(BD + comptabilité + notification). Déjà finale : renvoie le statut en base.",
+        "operationId": "check_transaction_status_status__transaction_ref__check_get",
+        "parameters": [
+          {
+            "name": "transaction_ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Transaction Ref"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Aucune transaction pour cette référence."
+          },
+          "502": {
+            "description": "Agrégateur injoignable, réessayez."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/transactions/{transaction_ref}/trace": {
       "get": {
         "tags": [
