@@ -111,6 +111,33 @@ async def _execute_payout(
     if settings.mock_payments:
         return await _execute_payout_mock(req, app_id, api_key_id, debug)
 
+    tx_id, balance_after = await _prepare_payout(req, app_id, api_key_id)
+    # 2) Initiation du virement chez DigiKUNTZ.
+    payout_flow = _flow(req.aggregator)
+    try:
+        init = await payout_flow.initiate_payout(req)
+    except payout_flow.PayoutUpstreamError as e:
+        # Panne amont : rien n'est parti -> on rembourse le débit et on 503.
+        await _refund(app_id, req, tx_id)
+        await db.update_payout(
+            tx_id, status="failed", success=False,
+            message=UPSTREAM_MESSAGES[e.code])
+        raise HTTPException(503, {"code": e.code, "message": UPSTREAM_MESSAGES[e.code]})
+    except Exception as e:  # noqa: BLE001 — refus/erreur non-amont
+        log.warning("payout tx=%s: initiation échouée (%s)", tx_id, e)
+        await _refund(app_id, req, tx_id)
+        await db.update_payout(
+            tx_id, status="failed", success=False,
+            message="Le virement n'a pas pu être initié.")
+        raise HTTPException(502, {"error": "payout_failed",
+                                  "message": "Le virement n'a pas pu être initié."})
+
+    return await _apply_init(req, app_id, tx_id, init, balance_after, debug)
+
+
+async def _prepare_payout(req: PayoutRequest, app_id: int, api_key_id: int | None):
+    """Insère le payout pending et réserve le solde (montant + frais imputés).
+    Retourne (tx_id, balance_after) ; lève 422 si solde insuffisant."""
     tx_id = await db.insert_pending_payout(
         req.aggregator, req, app_id=app_id, api_key_id=api_key_id,
         end_user_ref=req.end_user_ref, callback_url=req.callback_url,
@@ -141,26 +168,13 @@ async def _execute_payout(
         await db.debit_platform(charges["platform_extra"], transaction_id=tx_id,
                                 reason="payout_provider_fee")
 
-    # 2) Initiation du virement chez DigiKUNTZ.
-    payout_flow = _flow(req.aggregator)
-    try:
-        init = await payout_flow.initiate_payout(req)
-    except payout_flow.PayoutUpstreamError as e:
-        # Panne amont : rien n'est parti -> on rembourse le débit et on 503.
-        await _refund(app_id, req, tx_id)
-        await db.update_payout(
-            tx_id, status="failed", success=False,
-            message=UPSTREAM_MESSAGES[e.code])
-        raise HTTPException(503, {"code": e.code, "message": UPSTREAM_MESSAGES[e.code]})
-    except Exception as e:  # noqa: BLE001 — refus/erreur non-amont
-        log.warning("payout tx=%s: initiation échouée (%s)", tx_id, e)
-        await _refund(app_id, req, tx_id)
-        await db.update_payout(
-            tx_id, status="failed", success=False,
-            message="Le virement n'a pas pu être initié.")
-        raise HTTPException(502, {"error": "payout_failed",
-                                  "message": "Le virement n'a pas pu être initié."})
+    return tx_id, balance_after
 
+
+async def _apply_init(req, app_id, tx_id, init, balance_after, debug):
+    """Applique le résultat d'initiation (unitaire ou bulk) : BD, verdict
+    immédiat éventuel, sinon finalisation en tâche de fond."""
+    payout_flow = _flow(req.aggregator)
     provider_id = init["provider_id"]
     transaction_ref = init["transaction_ref"]
     internal = init["internal_status"]

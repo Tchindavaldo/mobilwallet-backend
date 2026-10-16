@@ -26,7 +26,8 @@ from core.config import settings
 from core.db import db
 from core.llm_client import LlmClient, LlmConfig
 from core.routers import (
-    admin, auth, availability, dev, payments, payout, projects, system, templates, transactions,
+    admin, auth, availability, dev, payment_page, payments, payout, payout_ops, projects,
+    system, templates, transactions,
     webhooks,
 )
 
@@ -108,7 +109,9 @@ app.include_router(webhooks.router)
 app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(payments.router)
+app.include_router(payout_ops.router)
 app.include_router(payout.router)
+app.include_router(payment_page.router)
 app.include_router(transactions.router)
 app.include_router(availability.router)
 app.include_router(templates.router)

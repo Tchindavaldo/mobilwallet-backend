@@ -7,14 +7,13 @@ lentes), CLOSED (refusées). Ce sont des FAITS publiés par pawaPay."""
 import time
 
 from aggregators.pawapay import client
+from aggregators.pawapay.operations import network_of
 
 _TTL = 60.0
 _cache: dict = {"at": 0.0, "data": None}
 
 # Opération MobileWallet -> operationType pawaPay.
 _OPS = {"deposit": "DEPOSIT", "payout": "PAYOUT", "refund": "REFUND"}
-# Code provider pawaPay -> réseau canonique MobileWallet.
-_NETWORKS = {"MTN_MOMO_CMR": "MTN", "ORANGE_CMR": "Orangemoney"}
 
 
 def _op_statuses(entry: dict) -> dict:
@@ -47,7 +46,7 @@ async def get_availability() -> list | None:
             code = p.get("provider", "")
             st = _op_statuses(p)
             out.append({
-                "network": _NETWORKS.get(code, code),
+                "network": network_of(code),
                 "provider": code,
                 "operations": {op: st.get(pp) for op, pp in _OPS.items() if pp in st},
             })

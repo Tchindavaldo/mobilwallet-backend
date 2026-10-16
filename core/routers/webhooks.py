@@ -9,6 +9,7 @@ import logging
 from fastapi import APIRouter
 
 from core import settlement
+from core.db import db
 
 log = logging.getLogger("ai_browser2")
 
@@ -62,6 +63,12 @@ async def pawapay_webhook(payload: dict):
     failure = payload.get("failureReason")
     internal = client.map_status(raw, failure)
     log.info("🪝 Webhook pawaPay: id=%s status=%s -> %s", provider_id, raw, internal)
+    payer = (payload.get("payer") or {}).get("accountDetails") or {}
+    if payload.get("depositId") and payer:
+        # Dépôt via page hébergée : réseau/numéro connus seulement maintenant.
+        from aggregators.pawapay.operations import network_of
+        await db.fill_payer(provider_id, network_of(payer.get("provider", "")),
+                            payer.get("phoneNumber", ""))
     if provider_id and internal in client.TERMINAL:
         client.registry.deliver(
             provider_id, {"status": internal, "raw": raw, "failure": failure})

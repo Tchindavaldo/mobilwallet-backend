@@ -182,6 +182,28 @@ class Database(LedgerMixin, DiagnosticsMixin, ConfigMixin):
         except Exception as e:  # noqa: BLE001
             log.warning("set_provider_id failed: %s", e)
 
+    async def set_initiated(self, tx_id: int | None, provider_id: str, status: str,
+                            message: str) -> None:
+        """Après une initiation hors /pay (ex. page hébergée) : id agrégateur
+        (= transaction_ref), statut et message. No-op si BD désactivée."""
+        if not self.enabled or tx_id is None:
+            return
+        fields = {"provider_transaction_id": provider_id, "transaction_ref": provider_id,
+                  "status": status, "message": message, "success": False}
+        await self._run(lambda: self._client.table("transactions")
+                        .update(fields).eq("id", tx_id).execute())
+
+    async def fill_payer(self, provider_id: str, network: str, phone: str) -> None:
+        """Complète réseau/numéro d'un dépôt créé sans (page hébergée), sans
+        écraser une valeur déjà présente."""
+        if not self.enabled or not provider_id:
+            return
+        for col, val in (("network", network), ("phone", phone)):
+            if val:
+                await self._run(lambda c=col, v=val: self._client.table("transactions")
+                                .update({c: v}).eq("provider_transaction_id", provider_id)
+                                .or_(f"{c}.is.null,{c}.eq.").execute())
+
     async def get_transaction_by_provider_id(self, provider_id: str) -> dict | None:
         """Retrouve une transaction par son id provider (pour le webhook)."""
         if not self.enabled or not provider_id:
