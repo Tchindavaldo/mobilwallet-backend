@@ -51,3 +51,9 @@ async def get_availability() -> list | None:
                 "operations": {op: st.get(pp) for op, pp in _OPS.items() if pp in st},
             })
     return out
+
+
+def unavailable_message(network: str) -> str:
+    """Même message que le refus pawaPay PROVIDER_TEMPORARILY_UNAVAILABLE :
+    indique au client de réessayer plus tard ou de passer par l'autre réseau."""
+    return client.failure_message({"failureCode": "PROVIDER_TEMPORARILY_UNAVAILABLE"}, network)

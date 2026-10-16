@@ -939,7 +939,7 @@
           "payments"
         ],
         "summary": "Créer une page de paiement hébergée",
-        "description": "Crée une page de paiement chez l'agrégateur et renvoie `redirect_url`\noù envoyer votre client. Suivi : `GET /status/{transaction_id}`, webhook,\nSocket.IO ; le client revient ensuite sur `return_url`.",
+        "description": "Crée une page de paiement chez l'agrégateur et renvoie `redirect_url`\noù envoyer votre client. Suivi : `GET /status/{transaction_id}`, webhook,\nSocket.IO ; le client revient ensuite sur `return_url`.\n\nÀ l'arrivée sur `return_url`, ne considérez PAS le paiement comme fait :\nlisez `GET /status/{transaction_id}` (ou `/check`). Une page abandonnée\npasse `failed` environ 16 min après sa création.",
         "operationId": "payment_page_pay_page_post",
         "parameters": [
           {

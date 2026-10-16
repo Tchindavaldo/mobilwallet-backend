@@ -13,6 +13,9 @@ log = logging.getLogger("ai_browser2")
 _NETWORKS = {"MTN_MOMO_CMR": "MTN", "ORANGE_CMR": "Orangemoney"}
 _KINDS = {"payin": "deposits", "payout": "payouts"}
 
+# Doc pawaPay : page abandonnée -> dépôt NOT_FOUND, à considérer FAILED après 15 min.
+PAGE_EXPIRY_S = 15 * 60
+
 
 def network_of(provider_code: str) -> str:
     return _NETWORKS.get(provider_code or "", provider_code or "")

@@ -50,10 +50,13 @@ async def guard(aggregator: str, network: str, operation: str) -> None:
     if status in _BLOCKING:
         log.warning("Opérateur %s indisponible (%s, %s) : %s refusé",
                     network, aggregator, status, operation)
+        mod = _module(aggregator)
+        msg = (mod.unavailable_message(network) if hasattr(mod, "unavailable_message")
+               else f"L'opérateur {network} est momentanément indisponible. "
+                    f"Réessayez plus tard ou utilisez un autre réseau.")
         raise HTTPException(503, {
             "code": "operator_unavailable",
-            "message": f"L'opérateur {network} est momentanément indisponible "
-                       f"pour cette opération ({status}). Réessayez plus tard.",
+            "message": msg,
             "aggregator": aggregator, "network": network,
             "operation": operation, "operator_status": status,
         })

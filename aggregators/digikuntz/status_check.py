@@ -4,7 +4,7 @@ GET {base}/transaction, sans polling. Utilisé par core/status_check.py."""
 from . import status_poll
 
 
-async def check_deposit_status(provider_id: str) -> dict | None:
+async def check_deposit_status(provider_id: str, tx: dict | None = None) -> dict | None:
     """Retourne {status, raw, message, terminal} ou None si DigiKUNTZ est injoignable.
     Un statut terminal est déposé dans le registre (réveille un suivi en cours)."""
     res = await status_poll.fetch_status(provider_id)

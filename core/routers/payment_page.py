@@ -6,7 +6,7 @@ classique (core.settlement) ; réseau et numéro sont complétés à ce moment-l
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from core import aggregator_ops, registry
+from core import aggregator_ops, registry, status_check
 from core.auth import AuthContext, require_api_key
 from core.base import PaymentRequest
 from core.db import db
@@ -26,7 +26,11 @@ router = APIRouter()
 async def payment_page(req: PaymentPageRequest, ctx: AuthContext = Depends(require_api_key)):
     """Crée une page de paiement chez l'agrégateur et renvoie `redirect_url`
     où envoyer votre client. Suivi : `GET /status/{transaction_id}`, webhook,
-    Socket.IO ; le client revient ensuite sur `return_url`."""
+    Socket.IO ; le client revient ensuite sur `return_url`.
+
+    À l'arrivée sur `return_url`, ne considérez PAS le paiement comme fait :
+    lisez `GET /status/{transaction_id}` (ou `/check`). Une page abandonnée
+    passe `failed` environ 16 min après sa création."""
     if req.aggregator not in registry.names():
         raise HTTPException(404, {"error": "unknown_aggregator",
                                   "supported_aggregators": registry.names()})
@@ -48,5 +52,9 @@ async def payment_page(req: PaymentPageRequest, ctx: AuthContext = Depends(requi
                                   "failure": res.get("failure")})
     await db.set_initiated(tx_id, res["provider_id"], "pending",
                            "Page de paiement créée : en attente du client.")
+    # Page abandonnée = aucun webhook : une vérification après l'expiration
+    # la clôture (et rattrape un webhook perdu si le client a payé).
+    status_check.schedule_check(res["provider_id"],
+                                aggregator_ops.get(req.aggregator, "PAGE_EXPIRY_S") + 60)
     return {"success": True, "status": "pending", "transaction_id": res["provider_id"],
             "redirect_url": res["redirect_url"]}

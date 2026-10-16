@@ -204,6 +204,16 @@ class Database(LedgerMixin, DiagnosticsMixin, ConfigMixin):
                                 .update({c: v}).eq("provider_transaction_id", provider_id)
                                 .or_(f"{c}.is.null,{c}.eq.").execute())
 
+    async def list_pending_by_mode(self, mode: str) -> list[dict]:
+        """Transactions encore pending d'un mode (ex. "page"), pour reprendre
+        leur vérification planifiée après un redémarrage."""
+        if not self.enabled:
+            return []
+        res = await self._run(lambda: self._client.table("transactions")
+                              .select("transaction_ref, aggregator, created_at")
+                              .eq("mode", mode).eq("status", "pending").execute())
+        return res.data if res else []
+
     async def get_transaction_by_provider_id(self, provider_id: str) -> dict | None:
         """Retrouve une transaction par son id provider (pour le webhook)."""
         if not self.enabled or not provider_id:
