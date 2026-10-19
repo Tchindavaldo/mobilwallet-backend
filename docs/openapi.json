@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "MobileWallet backend",
-    "description": "\nBackend **MobileWallet** — un rassemblement d'**agrégateurs** de paiement Mobile Money.\n\nChaque agrégateur (DigiKUNTZ aujourd'hui, d'autres demain) est un module exposant\ndeux capacités :\n\n- **navigateur IA** (`mode=browser`) : un agent Playwright + LLM pilote le checkout,\n  exécute le paiement et **déduit** le « curl replay » (requête `/charge` + `/verify`),\n  persisté comme *template* réutilisable.\n- **curl replay** (`mode=replay`) : rejoue le paiement sans navigateur via le template stocké.\n- **auto** (`mode=auto`, défaut) : tente le replay d'abord, puis bascule sur le navigateur\n  si le replay est non concluant (`fallback_browser`).\n\nToute tentative est auditée (table `transactions`) quand Supabase est configuré.\n",
+    "description": "\nBackend **MobileWallet** : une seule API pour encaisser (dépôt Mobile Money) et\nvirer (payout) via plusieurs **agrégateurs**.\n\n**Sélecteur en haut de page** : choisissez votre agrégateur pour ne voir que\nles routes qui le concernent. La connexion (**Authorize**) est commune.\n\n### Démarrage rapide\n1. **Compte** : `POST /signup` (ou `POST /login`) → copiez `access_token`, puis\n   **Authorize → DevJWT**.\n2. **App + clé** : `POST /apps` (notez `id`) puis `POST /apps/{app_id}/keys`\n   → copiez la clé `sk_…` (affichée **une seule fois**), puis **Authorize → ApiKey**.\n3. **Payer** : `GET /availability` (état des opérateurs) puis `POST /pay`, et\n   suivez avec `GET /status/{transaction_ref}`.\n\nDans **Authorize**, collez la valeur seule (sans « Bearer »).\n**AdminKey** : réservée à l'administrateur MobileWallet (routes `/admin`).\n",
     "version": "0.2"
   },
   "paths": {
@@ -178,7 +178,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ]
       }
     },
     "/signup": {
@@ -3935,45 +3940,57 @@
       "ApiKey": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Clé API d'app (paiements) : Authorization: Bearer <sk_…>."
+        "description": "Clé API de votre app (`sk_…`), obtenue par `POST /apps/{app_id}/keys`. Paiements, virements, suivi."
       },
       "DevJWT": {
         "type": "http",
         "scheme": "bearer",
-        "description": "JWT du compte developer (gestion des projets) : Authorization: Bearer <jwt>."
+        "description": "`access_token` renvoyé par `POST /signup` ou `POST /login`. Gestion de vos apps et clés."
       },
       "AdminKey": {
         "type": "apiKey",
         "in": "header",
         "name": "X-Admin-Key",
-        "description": "Clé admin pour la supervision des developers/apps/clés."
+        "description": "Clé admin MobileWallet (secret serveur ADMIN_KEY). Routes /admin."
       }
     }
   },
   "tags": [
     {
-      "name": "system",
-      "description": "Santé et introspection du service."
+      "name": "auth",
+      "description": "Compte developer : inscription, connexion, jetons (DevJWT)."
+    },
+    {
+      "name": "projects",
+      "description": "Vos apps et leurs clés API (DevJWT)."
+    },
+    {
+      "name": "availability",
+      "description": "Opérateurs disponibles, montants min/max, prédiction du réseau."
     },
     {
       "name": "payments",
-      "description": "Exécution des paiements via les agrégateurs."
+      "description": "Encaisser : dépôt Mobile Money, page de paiement hébergée."
     },
     {
       "name": "payout",
-      "description": "Virements sortants (retraits) débités du solde de l'app."
+      "description": "Virer : retraits débités du solde de l'app."
     },
     {
       "name": "transactions",
-      "description": "Gestion des transactions exposée au client."
+      "description": "Suivi : statut, historique, solde."
+    },
+    {
+      "name": "system",
+      "description": "Santé du service et agrégateurs disponibles."
     },
     {
       "name": "admin",
-      "description": "Audit/debug réservé à l'admin backend (non documenté pour le client)."
+      "description": "Réservé à l'administrateur MobileWallet (AdminKey)."
     },
     {
       "name": "dev",
-      "description": "Outils de développement (pilotage libre, ping LLM)."
+      "description": "Outils internes (navigateur IA)."
     }
   ]
 }

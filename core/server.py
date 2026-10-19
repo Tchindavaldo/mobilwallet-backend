@@ -20,7 +20,7 @@ from fastapi import FastAPI
 # Importer le package aggregators enregistre tous les agrégateurs dans le registre.
 import aggregators.digikuntz  # noqa: F401
 import aggregators.pawapay  # noqa: F401
-from core import runtime
+from core import openapi_docs, runtime
 from core.browser import BrowserController
 from core.config import settings
 from core.db import db
@@ -98,37 +98,11 @@ async def lifespan(app: FastAPI):
     await runtime.browser.stop()
 
 
-API_DESCRIPTION = """
-Backend **MobileWallet** — un rassemblement d'**agrégateurs** de paiement Mobile Money.
-
-Chaque agrégateur (DigiKUNTZ aujourd'hui, d'autres demain) est un module exposant
-deux capacités :
-
-- **navigateur IA** (`mode=browser`) : un agent Playwright + LLM pilote le checkout,
-  exécute le paiement et **déduit** le « curl replay » (requête `/charge` + `/verify`),
-  persisté comme *template* réutilisable.
-- **curl replay** (`mode=replay`) : rejoue le paiement sans navigateur via le template stocké.
-- **auto** (`mode=auto`, défaut) : tente le replay d'abord, puis bascule sur le navigateur
-  si le replay est non concluant (`fallback_browser`).
-
-Toute tentative est auditée (table `transactions`) quand Supabase est configuré.
-"""
-
-OPENAPI_TAGS = [
-    {"name": "system", "description": "Santé et introspection du service."},
-    {"name": "payments", "description": "Exécution des paiements via les agrégateurs."},
-    {"name": "payout", "description": "Virements sortants (retraits) débités du solde de l'app."},
-    {"name": "transactions", "description": "Gestion des transactions exposée au client."},
-    {"name": "admin", "description": "Audit/debug réservé à l'admin backend (non documenté pour le client)."},
-    {"name": "dev", "description": "Outils de développement (pilotage libre, ping LLM)."},
-]
-
 app = FastAPI(
     title="MobileWallet backend",
     version="0.2",
-    description=API_DESCRIPTION,
-    openapi_tags=OPENAPI_TAGS,
     lifespan=lifespan,
+    docs_url=None,
 )
 
 # Montage des routers par domaine.
@@ -147,30 +121,8 @@ app.include_router(admin.router)
 app.include_router(dev.router)
 
 
-def _custom_openapi():
-    """Documente les schémas d'auth dans Swagger : clé API (Bearer) pour les
-    routes tenant, clé admin (header X-Admin-Key) pour la gestion."""
-    if app.openapi_schema:
-        return app.openapi_schema
-    from fastapi.openapi.utils import get_openapi
-    schema = get_openapi(
-        title=app.title, version=app.version,
-        description=app.description, tags=app.openapi_tags, routes=app.routes,
-    )
-    schema.setdefault("components", {})["securitySchemes"] = {
-        "ApiKey": {"type": "http", "scheme": "bearer",
-                   "description": "Clé API d'app (paiements) : Authorization: Bearer <sk_…>."},
-        "DevJWT": {"type": "http", "scheme": "bearer",
-                   "description": "JWT du compte developer (gestion des projets) : "
-                                  "Authorization: Bearer <jwt>."},
-        "AdminKey": {"type": "apiKey", "in": "header", "name": "X-Admin-Key",
-                     "description": "Clé admin pour la supervision des developers/apps/clés."},
-    }
-    app.openapi_schema = schema
-    return schema
-
-
-app.openapi = _custom_openapi
+# Swagger : schéma complet + une vue par agrégateur (sélecteur dans /docs).
+openapi_docs.install(app)
 
 # Monte Socket.IO par-dessus FastAPI. `asgi` est le point d'entrée à servir
 # (uvicorn core.server:asgi) ; `app` reste l'app FastAPI pure (routes/openapi).

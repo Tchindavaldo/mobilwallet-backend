@@ -89,7 +89,10 @@ Variables d'environnement (cf. `.env.example`) : `DIGIKUNTZ_*`, `PAWAPAY_*` (bas
 
 FastAPI génère automatiquement la doc OpenAPI :
 
-- **Swagger UI** : `http://localhost:7332/docs`
+- **Swagger UI** : `http://localhost:7332/docs` — sélecteur d'agrégateur en haut
+  (chaque vue ne montre que ses routes) ; **Authorize** commun à toutes les vues
+  (ApiKey `sk_…`, DevJWT de `/login`, AdminKey).
+- **Vue par agrégateur** : `http://localhost:7332/openapi/<agrégateur>.json`
 - **ReDoc** : `http://localhost:7332/redoc`
 - **Schéma brut** : `http://localhost:7332/openapi.json`
 

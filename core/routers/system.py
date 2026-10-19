@@ -3,10 +3,11 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core import registry
 from core import runtime
+from core.auth import require_admin
 from core.db import db
 from core.fees import fee_network, fee_payer, fees_info
 from core.schemas.system import MaxTabsRequest
@@ -89,7 +90,8 @@ async def get_max_tabs():
     return {"max_tabs": browser.max_tabs if browser else None, "open_browsers": pools}
 
 
-@router.put("/config/max-tabs", tags=["system"], summary="Modifier le seuil d'onglets")
+@router.put("/config/max-tabs", tags=["system"], summary="Modifier le seuil d'onglets",
+            dependencies=[Depends(require_admin)])
 async def set_max_tabs(req: MaxTabsRequest):
     """Change le seuil (persisté en BD, appliqué immédiatement au pool en cours)."""
     browser = runtime.get_browser()
