@@ -5,6 +5,7 @@ OPERATIONAL alors qu'un incident est déclaré sur le dashboard."""
 
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -13,8 +14,14 @@ from aggregators.pawapay.operations import network_of
 log = logging.getLogger("ai_browser2")
 
 _URL = "https://status.pawapay.io/api/v2/summary.json"
+_INCIDENTS_URL = "https://status.pawapay.io/api/v2/incidents.json"
 _TTL = 60.0
 _cache: dict = {"at": 0.0, "data": None}
+_inc_cache: dict = {"at": 0.0, "data": None}
+
+# Après la résolution d'un incident, l'opération reste bloquée 1 h : constaté,
+# pawaPay remet le composant à operational avant que l'USSD reparte vraiment.
+COOLDOWN_S = 3600
 
 # Groupe de composants par pays (code pawaPay -> nom du groupe sur la page).
 _COUNTRY_GROUP = {"CMR": "Cameroon"}
@@ -28,24 +35,49 @@ STATUS_MAP = {"degraded_performance": "CLOSED", "partial_outage": "CLOSED",
               "major_outage": "CLOSED"}
 
 
-async def _summary() -> dict | None:
-    if _cache["data"] is not None and time.monotonic() - _cache["at"] < _TTL:
-        return _cache["data"]
+async def _fetch(url: str, cache: dict) -> dict | None:
+    if cache["data"] is not None and time.monotonic() - cache["at"] < _TTL:
+        return cache["data"]
     try:
         async with httpx.AsyncClient(timeout=8) as http:
-            r = await http.get(_URL)
+            r = await http.get(url)
             r.raise_for_status()
             data = r.json()
     except Exception as exc:  # page injoignable : on s'en tient à l'API marchand
-        log.warning("Page de statut pawaPay injoignable : %s", exc)
+        log.warning("Page de statut pawaPay injoignable (%s) : %s", url, exc)
         return None
-    _cache.update(at=time.monotonic(), data=data)
+    cache.update(at=time.monotonic(), data=data)
     return data
 
 
+async def _summary() -> dict | None:
+    return await _fetch(_URL, _cache)
+
+
+async def _cooling_down() -> dict:
+    """{component_id: (nom incident, fin du délai ISO)} pour les incidents
+    résolus depuis moins de COOLDOWN_S."""
+    data = await _fetch(_INCIDENTS_URL, _inc_cache)
+    now = datetime.now(timezone.utc)
+    out = {}
+    for inc in (data or {}).get("incidents", []):
+        resolved = inc.get("resolved_at")
+        if inc.get("status") not in ("resolved", "postmortem") or not resolved:
+            continue
+        until = datetime.fromisoformat(resolved.replace("Z", "+00:00")) + timedelta(seconds=COOLDOWN_S)
+        if until <= now:
+            continue
+        for comp in inc.get("components", []):
+            prev = out.get(comp.get("id"))
+            if not prev or prev[1] < until.isoformat():
+                out[comp.get("id")] = (inc.get("name"), until.isoformat())
+    return out
+
+
 async def incidents(country: str) -> dict:
-    """{(provider, operationType): {status, component_status, incident}} pour
-    les composants dégradés du pays ; {} si rien ou page injoignable."""
+    """{(provider, operationType): {status, component_status, incident[,
+    cooldown_until]}} pour les composants dégradés du pays, ou dont l'incident
+    est résolu depuis moins de COOLDOWN_S ; {} si rien ou page injoignable."""
     data = await _summary()
     group_prefix = _COUNTRY_GROUP.get(country)
     if not data or not group_prefix:
@@ -60,18 +92,22 @@ async def incidents(country: str) -> dict:
             continue
         for comp in inc.get("components", []):
             names[comp.get("id")] = inc.get("name")
+    cooling = await _cooling_down()
     out = {}
     for c in data.get("components", []):
         if c.get("group_id") not in groups:
             continue
-        if c.get("status") not in STATUS_MAP and c.get("id") not in names:
+        cool = cooling.get(c.get("id")) if c.get("id") not in names else None
+        if c.get("status") not in STATUS_MAP and c.get("id") not in names and not cool:
             continue
         prov, _, op = (c.get("name") or "").partition(" :: ")
         key = (_PROVIDERS.get(prov.strip()), _OPS.get(op.strip()))
         if None in key:
             continue
         out[key] = {"status": STATUS_MAP.get(c["status"], "CLOSED"), "component_status": c["status"],
-                    "incident": names.get(c.get("id"))}
+                    "incident": names.get(c.get("id")) or (cool and cool[0])}
+        if cool and c.get("status") not in STATUS_MAP and c.get("id") not in names:
+            out[key]["cooldown_until"] = cool[1]
     return out
 
 
