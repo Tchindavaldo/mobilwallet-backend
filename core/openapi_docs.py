@@ -15,6 +15,7 @@ import importlib
 import json
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.openapi.docs import get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse
 
@@ -203,6 +204,10 @@ def install(app: FastAPI) -> None:
     async def openapi_public():
         return _subset(app, app.title, lambda m, p: True)
 
+    @app.get("/redoc", include_in_schema=False)
+    async def redoc() -> HTMLResponse:
+        return get_redoc_html(openapi_url="/openapi.json", title=app.title)
+
     @app.get("/openapi/admin.json", include_in_schema=False,
              dependencies=[Depends(require_admin)])
     async def openapi_admin():
@@ -277,7 +282,9 @@ function syncAuth(self) {{
 }}
 function make(key, domId, url) {{
   return SwaggerUIBundle({{ url, dom_id: domId, presets: [SwaggerUIBundle.presets.apis],
-    plugins: [syncAuth(key)], persistAuthorization: true, deepLinking: false,
+    plugins: [syncAuth(key)], persistAuthorization: true,
+    // Liens directs (#/tag/route) : seule l'instance du haut pilote l'URL.
+    deepLinking: key === "common", showExtensions: true, showCommonExtensions: true,
     defaultModelsExpandDepth: -1 }});
 }}
 // Section admin : le serveur ne livre ses routes qu'avec une AdminKey valide.
