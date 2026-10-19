@@ -78,6 +78,7 @@ _BROWSER_PATHS = ("/transactions/{transaction_ref}/trace", "/transactions/{trans
                   "/config/max-tabs", "/drive", "/test-llm")
 _BROWSER_FIELDS = ("mode", "fallback_browser")
 _NETWORK_ROUTE = "/availability"
+_STATUS_PAGE_ROUTE = "/availability/status-page"
 
 
 def full_schema(app: FastAPI) -> dict:
@@ -104,6 +105,8 @@ def _keep(aggregator: str, method: str, path: str, direct_api: bool) -> bool:
         return _has_module(aggregator, "operations", op)
     if path == _NETWORK_ROUTE:
         return _has_module(aggregator, "availability")
+    if path == _STATUS_PAGE_ROUTE:
+        return _has_module(aggregator, "status_page")
     if direct_api and path in _BROWSER_PATHS:
         return False
     # Routes admin propres à un AUTRE agrégateur (/admin/<autre>/...).

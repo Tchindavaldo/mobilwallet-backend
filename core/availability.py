@@ -52,6 +52,16 @@ async def list_availability(aggregator: str) -> list | None:
     return await mod.get_availability()
 
 
+async def status_page(aggregator: str) -> dict | None:
+    """Page de statut publique de l'agrégateur (composants + incidents ouverts) ;
+    {} s'il n'en publie pas, None si injoignable."""
+    try:
+        mod = importlib.import_module(f"aggregators.{aggregator}.status_page")
+    except ModuleNotFoundError:
+        return {}
+    return await mod.get_page_status()
+
+
 async def operator_status(aggregator: str, network: str, operation: str) -> str | None:
     """Statut de l'opérateur `network` pour `operation`, ou None si inconnu."""
     rows = await list_availability(aggregator)

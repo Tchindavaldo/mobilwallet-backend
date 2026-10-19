@@ -33,7 +33,7 @@ ai_browser2/
 │   ├── runtime.py                État partagé entre routers (browser/llm vivants) + helpers
 │   │                             transverses (seconds_since, fmt_duration).
 │   ├── routers/                  UN APIRouter PAR DOMAINE (logique des endpoints) :
-│   │   ├── availability.py       GET /availability (état des opérateurs), GET /pay/minimum (min/max d'un dépôt) + POST /operators/predict.
+│   │   ├── availability.py       GET /availability (état des opérateurs), GET /availability/status-page (page de statut de l'agrégateur), GET /pay/minimum (min/max d'un dépôt) + POST /operators/predict.
 │   │   ├── payout_ops.py         POST /payout/bulk (≤20, un appel agrégateur) + POST /payout/{ref}/cancel.
 │   │   ├── payment_page.py       POST /pay/page : page de paiement hébergée -> redirect_url.
 │   │   ├── system.py             /health, /aggregators, /config/max-tabs.
@@ -153,7 +153,7 @@ ai_browser2/
 │   └── pawapay/                  Agrégateur « API directe » (Merchant API v2, Bearer token) :
 │       ├── operations.py         predict-provider, resend-callback, fail-enqueued, payouts/bulk, paymentpage.
 │       ├── availability.py       GET /v2/availability (cache 60 s) -> état par réseau/opération, NOT_ENABLED si non activé sur le compte, CLOSED si incident sur la page de statut.
-│       ├── status_page.py        Incidents de status.pawapay.io (API publique, cache 60 s) : composant dégradé ou incident ouvert.
+│       ├── status_page.py        status.pawapay.io (API publique, cache 60 s) : incidents pour /availability + état brut pour /availability/status-page.
 │       ├── account_conf.py       GET /v2/active-conf (cache 10 min) : opérations activées sur le compte, min/max, code USSD de secours.
 │       ├── status_check.py       check_deposit_status : 1 appel GET /v2/deposits/{id} à la demande.
 │       ├── client.py             HTTP pawaPay : initiate_deposit/payout, fetch_status, soldes,

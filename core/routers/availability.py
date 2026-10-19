@@ -35,6 +35,29 @@ async def operators_availability(aggregator: str = Query("pawapay"),
 
 
 @router.get(
+    "/availability/status-page",
+    tags=["availability"],
+    summary="Page de statut de l'agrégateur",
+    responses={404: {"description": "Agrégateur inconnu."},
+               502: {"description": "Page de statut injoignable, réessayez."}},
+)
+async def operators_status_page(aggregator: str = Query("pawapay"),
+                                ctx: AuthContext = Depends(require_api_key)):
+    """Ce que l'agrégateur publie sur sa page de statut publique, pour votre
+    pays : état de chaque réseau et opération (`operational`,
+    `degraded_performance`, `partial_outage`, `major_outage`) et incidents non
+    résolus avec leur dernier message. `/availability` en tient déjà compte
+    (incident ouvert -> CLOSED). Vide si l'agrégateur n'a pas de page de statut."""
+    if aggregator not in registry.names():
+        raise HTTPException(404, {"error": "unknown_aggregator",
+                                  "supported_aggregators": registry.names()})
+    page = await availability.status_page(aggregator)
+    if page is None:
+        raise HTTPException(502, "Page de statut injoignable, réessayez.")
+    return {"aggregator": aggregator, **page}
+
+
+@router.get(
     "/pay/minimum",
     tags=["availability"],
     summary="Montant minimum (et maximum) d'un dépôt",

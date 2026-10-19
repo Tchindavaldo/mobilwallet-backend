@@ -1432,6 +1432,59 @@
         }
       }
     },
+    "/availability/status-page": {
+      "get": {
+        "tags": [
+          "availability"
+        ],
+        "summary": "Page de statut de l'agrégateur",
+        "description": "Ce que l'agrégateur publie sur sa page de statut publique, pour votre\npays : état de chaque réseau et opération (`operational`,\n`degraded_performance`, `partial_outage`, `major_outage`) et incidents non\nrésolus avec leur dernier message. `/availability` en tient déjà compte\n(incident ouvert -> CLOSED). Vide si l'agrégateur n'a pas de page de statut.",
+        "operationId": "operators_status_page_availability_status_page_get",
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "aggregator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "pawapay",
+              "title": "Aggregator"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Agrégateur inconnu."
+          },
+          "502": {
+            "description": "Page de statut injoignable, réessayez."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/pay/minimum": {
       "get": {
         "tags": [
