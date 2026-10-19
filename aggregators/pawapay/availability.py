@@ -4,11 +4,14 @@ cache 60 s. Utilisé par core/availability.py (endpoint dédié + garde /pay, /p
 Statuts pawaPay : OPERATIONAL (normal), DELAYED (opérations mises en file, très
 lentes), CLOSED (refusées). Ce sont des FAITS publiés par pawaPay.
 Croisé avec la config du compte (account_conf) : une opération non activée sur
-ce compte est NOT_ENABLED, même si l'opérateur fonctionne chez pawaPay."""
+ce compte est NOT_ENABLED, même si l'opérateur fonctionne chez pawaPay.
+Croisé aussi avec la page de statut publique (status_page) : un incident déclaré
+sur le dashboard passe une opération OPERATIONAL en DEGRADED (avertissement) ou
+CLOSED (panne majeure, bloquante), avec le nom de l'incident."""
 
 import time
 
-from aggregators.pawapay import account_conf, client
+from aggregators.pawapay import account_conf, client, status_page
 from aggregators.pawapay.operations import network_of
 
 _TTL = 60.0
@@ -44,6 +47,7 @@ async def get_availability() -> list | None:
     if data is None:
         return None
     enabled = await account_conf.enabled_operations()  # None = config injoignable
+    degraded = await status_page.incidents(client._pp.country)
     out = []
     for country in data:
         for p in country.get("providers") or []:
@@ -53,11 +57,20 @@ async def get_availability() -> list | None:
                 mine = enabled.get(_CONF_NET.get(code, ""), set())
                 st = {pp: ("NOT_ENABLED" if pp not in mine else st.get(pp))
                       for pp in _OPS.values() if pp not in mine or st.get(pp)}
-            out.append({
+            incidents = {}
+            for op, pp in _OPS.items():
+                inc = degraded.get((code, pp))
+                if inc and st.get(pp) == "OPERATIONAL":
+                    st[pp] = inc["status"]
+                    incidents[op] = inc
+            row = {
                 "network": network_of(code),
                 "provider": code,
                 "operations": {op: st.get(pp) for op, pp in _OPS.items() if pp in st},
-            })
+            }
+            if incidents:
+                row["incidents"] = incidents
+            out.append(row)
     return out
 
 
