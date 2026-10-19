@@ -21,9 +21,9 @@ router = APIRouter()
 async def operators_availability(aggregator: str = Query("pawapay"),
                                  ctx: AuthContext = Depends(require_api_key)):
     """Statut par opérateur et par opération (deposit, payout, refund) :
-    OPERATIONAL (normal), DEGRADED (incident déclaré par l'agrégateur : ça
-    passe mais peut échouer, ex. USSD qui n'arrive pas ; détail dans `incidents`), DELAYED (payouts/refunds mis en file : acceptés,
-    exécutés plus tard), CLOSED (refusé : utilisez l'autre réseau).
+    OPERATIONAL (normal), DELAYED (payouts/refunds mis en file : acceptés,
+    exécutés plus tard), CLOSED (refusé : utilisez l'autre réseau ; aussi quand l'agrégateur a
+    déclaré un incident, détail dans `incidents`).
     Liste vide si l'agrégateur ne publie pas cette information."""
     if aggregator not in registry.names():
         raise HTTPException(404, {"error": "unknown_aggregator",

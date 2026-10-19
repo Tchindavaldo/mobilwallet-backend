@@ -6,8 +6,8 @@ lentes), CLOSED (refusées). Ce sont des FAITS publiés par pawaPay.
 Croisé avec la config du compte (account_conf) : une opération non activée sur
 ce compte est NOT_ENABLED, même si l'opérateur fonctionne chez pawaPay.
 Croisé aussi avec la page de statut publique (status_page) : un incident déclaré
-sur le dashboard passe une opération OPERATIONAL en DEGRADED (avertissement) ou
-CLOSED (panne majeure, bloquante), avec le nom de l'incident."""
+sur le dashboard passe une opération OPERATIONAL en CLOSED (bloquante), avec le
+nom de l'incident."""
 
 import time
 

@@ -20,10 +20,9 @@ _COUNTRY_GROUP = {"CMR": "Cameroon"}
 _PROVIDERS = {"MTN": "MTN_MOMO_CMR", "Orange": "ORANGE_CMR"}
 _OPS = {"Web Deposit": "DEPOSIT", "Payout": "PAYOUT"}
 
-# Statuts Statuspage -> statut MobileWallet. DEGRADED passe (avertissement),
-# CLOSED bloque (/pay et /payout refusés en 503). Composant operational mais
-# incident ouvert -> DEGRADED.
-STATUS_MAP = {"degraded_performance": "DEGRADED", "partial_outage": "DEGRADED",
+# Tout incident déclaré bloque : composant dégradé ou incident ouvert (même si
+# le composant est revenu à operational) -> CLOSED (/pay et /payout en 503).
+STATUS_MAP = {"degraded_performance": "CLOSED", "partial_outage": "CLOSED",
               "major_outage": "CLOSED"}
 
 
@@ -69,6 +68,6 @@ async def incidents(country: str) -> dict:
         key = (_PROVIDERS.get(prov.strip()), _OPS.get(op.strip()))
         if None in key:
             continue
-        out[key] = {"status": STATUS_MAP.get(c["status"], "DEGRADED"), "component_status": c["status"],
+        out[key] = {"status": STATUS_MAP.get(c["status"], "CLOSED"), "component_status": c["status"],
                     "incident": names.get(c.get("id"))}
     return out
