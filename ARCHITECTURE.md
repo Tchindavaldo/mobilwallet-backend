@@ -96,7 +96,7 @@ ai_browser2/
 │   ├── fees.py                   Calcul PUR de ventilation (compute_fees / fees_info / fee_payer) :
 │   │                             brut → frais agrégateur (selon fee_payer) → commission MW → app + plateforme.
 │   ├── aggregator_ops.py         Accès neutre aux opérations optionnelles (aggregators.<nom>.operations).
-│   ├── openapi_docs.py           Swagger : schéma complet + vue filtrée par agrégateur (/openapi/<nom>.json), page /docs à sélecteur.
+│   ├── openapi_docs.py           Swagger : routes communes (/openapi/common.json) + onglet par agrégateur pour ses routes propres (/openapi/<nom>.json), page /docs.
 │   ├── availability.py           Dispo opérateurs (neutre) : list + guard 503 sur /pay et /payout si CLOSED, 400 si NOT_ENABLED (DELAYED = payout en file).
 │   ├── deposit_limits.py         Min/max d'un dépôt (neutre) : notre min (reste >= 1 F à l'app après frais, commission, réserve) et celui de l'agrégateur ; 422 sur /pay et /pay/page.
 │   ├── status_check.py           Vérif. manuelle chez l'agrégateur (1 appel, payin/payout) -> settle_verdict.

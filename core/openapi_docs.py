@@ -1,9 +1,9 @@
 """Documentation Swagger : schéma OpenAPI complet + une vue par agrégateur.
 
-/docs propose un sélecteur (barre du haut) : « Tous » ou un agrégateur. Chaque
-vue ne garde que les routes que MobileWallet propose pour cet agrégateur, sans
-les champs qui ne le concernent pas. L'authentification
-(Authorize) est commune à toutes les vues (persistAuthorization).
+/docs montre d'abord les routes communes à tous les agrégateurs (chaque champ
+précise à quels agrégateurs il s'applique), puis, en bas, un onglet par
+agrégateur avec les routes qu'il est seul à avoir. L'authentification
+(Authorize) est commune.
 
 Tout est déduit des capacités déclarées par les agrégateurs (registre,
 `direct_api`, modules `operations` et `availability`) :
@@ -24,8 +24,9 @@ DESCRIPTION = """
 Backend **MobileWallet** : une seule API pour encaisser (dépôt Mobile Money) et
 virer (payout) via plusieurs **agrégateurs**.
 
-**Sélecteur en haut de page** : choisissez votre agrégateur pour ne voir que
-les routes qui le concernent. La connexion (**Authorize**) est commune.
+Cette page liste les routes **communes** à tous les agrégateurs (champ
+`aggregator` pour choisir le vôtre). Les routes **propres à un agrégateur**
+sont **en bas de page**, dans un onglet par agrégateur.
 
 ### Démarrage rapide
 1. **Compte** : `POST /signup` (ou `POST /login`) → copiez `access_token`, puis
@@ -110,49 +111,81 @@ def _keep(aggregator: str, method: str, path: str, direct_api: bool) -> bool:
     return True
 
 
-def _fix_schemas(schema: dict, aggregator: str, direct_api: bool) -> None:
-    for model in schema.get("components", {}).get("schemas", {}).values():
-        props = model.get("properties") or {}
-        if "aggregator" in props:
-            props["aggregator"] = {**props["aggregator"], "default": aggregator,
-                                   "enum": [aggregator]}
-        if direct_api:
-            for f in _BROWSER_FIELDS:
-                props.pop(f, None)
-                if f in (model.get("required") or []):
-                    model["required"].remove(f)
-    # Paramètres de requête `aggregator` (ex. /availability?aggregator=).
-    for ops in schema["paths"].values():
-        for op in ops.values():
-            for p in op.get("parameters", []):
-                if p.get("name") == "aggregator":
-                    p["schema"] = {**p.get("schema", {}), "default": aggregator, "enum": [aggregator]}
+def _direct(aggregator: str) -> bool:
+    return bool(getattr(registry.get(aggregator), "direct_api", False))
 
 
-def aggregator_schema(app: FastAPI, aggregator: str) -> dict:
-    cls = registry.get(aggregator)
-    if cls is None:
-        raise HTTPException(404, {"error": "unknown_aggregator",
-                                  "supported_aggregators": registry.names()})
-    direct_api = bool(getattr(cls, "direct_api", False))
+def _owners(method: str, path: str) -> list[str]:
+    """Agrégateurs pour lesquels MobileWallet propose cette route."""
+    return [a for a in registry.names() if _keep(a, method, path, _direct(a))]
+
+
+def _subset(app: FastAPI, title: str, keep) -> dict:
+    """Copie du schéma complet réduite aux routes `keep(method, path)`."""
     schema = copy.deepcopy(full_schema(app))
-    schema["info"]["title"] = f"MobileWallet backend · {aggregator}"
+    schema["info"]["title"] = title
     paths = {}
     for path, ops in schema["paths"].items():
-        kept = {m: o for m, o in ops.items() if _keep(aggregator, m, path, direct_api)}
+        kept = {m: o for m, o in ops.items() if keep(m, path)}
         if kept:
             paths[path] = kept
     schema["paths"] = paths
-    _fix_schemas(schema, aggregator, direct_api)
     used = {t for ops in paths.values() for o in ops.values() for t in o.get("tags", [])}
     schema["tags"] = [t for t in schema.get("tags", []) if t["name"] in used]
     return schema
 
 
+def _annotate_fields(schema: dict) -> None:
+    """Précise, champ par champ, à quels agrégateurs il s'applique."""
+    names = registry.names()
+    browser = [a for a in names if not _direct(a)]
+    direct = [a for a in names if _direct(a)]
+    for model in schema.get("components", {}).get("schemas", {}).values():
+        props = model.get("properties") or {}
+        if "aggregator" in props:
+            props["aggregator"] = {**props["aggregator"], "enum": names}
+        for f in _BROWSER_FIELDS:
+            if f in props and browser:
+                note = f" **Uniquement pour : {', '.join(browser)}**"
+                if direct:
+                    note += f" (ignoré par {', '.join(direct)})"
+                props[f] = {**props[f],
+                            "description": (props[f].get("description") or "") + note + "."}
+
+
+def common_schema(app: FastAPI) -> dict:
+    """Routes proposées pour TOUS les agrégateurs, champs annotés par agrégateur."""
+    n = len(registry.names())
+    schema = _subset(app, app.title, lambda m, p: len(_owners(m, p)) == n)
+    _annotate_fields(schema)
+    return schema
+
+
+def aggregator_schema(app: FastAPI, aggregator: str) -> dict:
+    """Routes propres à `aggregator` (proposées pour lui mais pas pour tous)."""
+    if registry.get(aggregator) is None:
+        raise HTTPException(404, {"error": "unknown_aggregator",
+                                  "supported_aggregators": registry.names()})
+    n = len(registry.names())
+
+    def keep(m, p):
+        owners = _owners(m, p)
+        return aggregator in owners and len(owners) < n
+    schema = _subset(app, f"Propre à {aggregator}", keep)
+    _annotate_fields(schema)
+    schema["info"]["description"] = ""
+    return schema
+
+
 def install(app: FastAPI) -> None:
-    """Remplace /docs par la version à sélecteur et ajoute /openapi/<agrégateur>.json.
-    L'app doit être créée avec docs_url=None."""
+    """/docs : routes communes, puis un onglet par agrégateur pour ses routes
+    propres. /openapi/common.json, /openapi/<agrégateur>.json ; /openapi.json
+    reste le schéma complet. L'app doit être créée avec docs_url=None."""
     app.openapi = lambda: full_schema(app)
+
+    @app.get("/openapi/common.json", include_in_schema=False)
+    async def openapi_common():
+        return common_schema(app)
 
     @app.get("/openapi/{aggregator}.json", include_in_schema=False)
     async def openapi_for(aggregator: str):
@@ -160,29 +193,69 @@ def install(app: FastAPI) -> None:
 
     @app.get("/docs", include_in_schema=False)
     async def docs() -> HTMLResponse:
-        urls = [{"name": n, "url": f"/openapi/{n}.json"} for n in registry.names()]
-        urls.append({"name": "Tous les agrégateurs", "url": app.openapi_url})
         return HTMLResponse(_SWAGGER_HTML.replace("__TITLE__", app.title)
-                            .replace("__URLS__", json.dumps(urls)))
+                            .replace("__AGGS__", json.dumps(registry.names())))
 
 
-# Swagger UI avec la barre du haut (StandaloneLayout) : c'est elle qui porte le
-# sélecteur « Select a definition ». La page FastAPI par défaut ne la charge pas.
+# Deux Swagger UI : le haut (routes communes) et le bas (onglet de l'agrégateur
+# choisi). Leurs autorisations sont synchronisées (plugin syncAuth) et
+# conservées (persistAuthorization) : on ne remplit Authorize qu'une fois.
 _CDN = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14"
 _SWAGGER_HTML = f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>__TITLE__</title>
 <link rel="stylesheet" href="{_CDN}/swagger-ui.css">
-<style>.topbar-wrapper .link {{ visibility: hidden; }}</style>
-</head><body><div id="swagger-ui"></div>
+<style>
+ body {{ margin: 0; font-family: sans-serif; }}
+ #specific {{ max-width: 1460px; margin: 40px auto 80px; padding: 0 20px; }}
+ #specific h2 {{ font-size: 28px; color: #3b4151; margin: 0 0 6px; }}
+ #specific p {{ color: #3b4151; margin: 0 0 16px; }}
+ .tabs {{ display: flex; gap: 8px; border-bottom: 2px solid #e3e3e3; }}
+ .tabs button {{ border: 0; background: none; padding: 10px 18px; font-size: 16px;
+   font-weight: 600; color: #6b6b6b; cursor: pointer; border-bottom: 3px solid transparent;
+   margin-bottom: -2px; }}
+ .tabs button.active {{ color: #49cc90; border-bottom-color: #49cc90; }}
+ #swagger-specific .information-container, #swagger-specific .scheme-container {{ display: none; }}
+</style>
+</head><body>
+<div id="swagger-common"></div>
+<section id="specific">
+  <h2>Endpoints propres à chaque agrégateur</h2>
+  <p>Routes que MobileWallet ne propose que pour l'agrégateur choisi. La connexion (Authorize) reste la même.</p>
+  <div class="tabs" id="tabs"></div>
+  <div id="swagger-specific"></div>
+</section>
 <script src="{_CDN}/swagger-ui-bundle.js"></script>
-<script src="{_CDN}/swagger-ui-standalone-preset.js"></script>
 <script>
-window.ui = SwaggerUIBundle({{
-  urls: __URLS__,
-  dom_id: "#swagger-ui",
-  presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
-  layout: "StandaloneLayout",
-  persistAuthorization: true,
-  deepLinking: true,
-}});
+const AGGS = __AGGS__;
+const uis = {{}};
+let syncing = false;
+function syncAuth(self) {{
+  const relay = (name) => (ori) => (payload) => {{
+    const res = ori(payload);
+    if (!syncing) {{
+      syncing = true;
+      for (const [k, ui] of Object.entries(uis)) if (k !== self && ui) ui.authActions[name](payload);
+      syncing = false;
+    }}
+    return res;
+  }};
+  return () => ({{ statePlugins: {{ auth: {{ wrapActions: {{
+    authorize: relay("authorize"), logout: relay("logout") }} }} }} }});
+}}
+function make(key, domId, url) {{
+  return SwaggerUIBundle({{ url, dom_id: domId, presets: [SwaggerUIBundle.presets.apis],
+    plugins: [syncAuth(key)], persistAuthorization: true, deepLinking: false,
+    defaultModelsExpandDepth: -1 }});
+}}
+uis.common = make("common", "#swagger-common", "/openapi/common.json");
+function show(agg) {{
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("active", b.dataset.agg === agg));
+  uis.specific = make("specific", "#swagger-specific", "/openapi/" + agg + ".json");
+}}
+for (const a of AGGS) {{
+  const b = document.createElement("button");
+  b.textContent = a; b.dataset.agg = a; b.onclick = () => show(a);
+  document.getElementById("tabs").appendChild(b);
+}}
+show(AGGS[0]);
 </script></body></html>"""
