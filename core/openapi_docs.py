@@ -14,11 +14,12 @@ import copy
 import importlib
 import json
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse
 
 from core import registry
+from core.auth import require_admin
 
 DESCRIPTION = """
 Backend **MobileWallet** : une seule API pour encaisser (dépôt Mobile Money) et
@@ -120,13 +121,19 @@ def _owners(method: str, path: str) -> list[str]:
     return [a for a in registry.names() if _keep(a, method, path, _direct(a))]
 
 
-def _subset(app: FastAPI, title: str, keep) -> dict:
-    """Copie du schéma complet réduite aux routes `keep(method, path)`."""
+def _is_admin(op: dict) -> bool:
+    """Route protégée par la clé admin (exigence de sécurité AdminKey)."""
+    return any("AdminKey" in req for req in op.get("security") or [])
+
+
+def _subset(app: FastAPI, title: str, keep, admin: bool = False) -> dict:
+    """Copie du schéma complet réduite aux routes `keep(method, path)` : routes
+    admin seulement si `admin`, sinon aucune route admin."""
     schema = copy.deepcopy(full_schema(app))
     schema["info"]["title"] = title
     paths = {}
     for path, ops in schema["paths"].items():
-        kept = {m: o for m, o in ops.items() if keep(m, path)}
+        kept = {m: o for m, o in ops.items() if keep(m, path) and _is_admin(o) == admin}
         if kept:
             paths[path] = kept
     schema["paths"] = paths
@@ -177,11 +184,29 @@ def aggregator_schema(app: FastAPI, aggregator: str) -> dict:
     return schema
 
 
+def admin_schema(app: FastAPI) -> dict:
+    """Routes admin seules (servies uniquement avec une AdminKey valide)."""
+    schema = _subset(app, "Administration", lambda m, p: True, admin=True)
+    schema["info"]["description"] = ""
+    return schema
+
+
 def install(app: FastAPI) -> None:
-    """/docs : routes communes, puis un onglet par agrégateur pour ses routes
-    propres. /openapi/common.json, /openapi/<agrégateur>.json ; /openapi.json
-    reste le schéma complet. L'app doit être créée avec docs_url=None."""
+    """/docs : routes communes, onglets par agrégateur, et section admin chargée
+    seulement après une AdminKey valide. Schémas publics sans aucune route admin :
+    /openapi.json, /openapi/common.json, /openapi/<agrégateur>.json ;
+    /openapi/admin.json exige X-Admin-Key. app.openapi() (dump versionné) reste
+    complet. L'app doit être créée avec docs_url=None et openapi_url=None."""
     app.openapi = lambda: full_schema(app)
+
+    @app.get("/openapi.json", include_in_schema=False)
+    async def openapi_public():
+        return _subset(app, app.title, lambda m, p: True)
+
+    @app.get("/openapi/admin.json", include_in_schema=False,
+             dependencies=[Depends(require_admin)])
+    async def openapi_admin():
+        return admin_schema(app)
 
     @app.get("/openapi/common.json", include_in_schema=False)
     async def openapi_common():
@@ -206,19 +231,25 @@ _SWAGGER_HTML = f"""<!doctype html>
 <link rel="stylesheet" href="{_CDN}/swagger-ui.css">
 <style>
  body {{ margin: 0; font-family: sans-serif; }}
- #specific {{ max-width: 1460px; margin: 40px auto 80px; padding: 0 20px; }}
- #specific h2 {{ font-size: 28px; color: #3b4151; margin: 0 0 6px; }}
- #specific p {{ color: #3b4151; margin: 0 0 16px; }}
+ .block {{ max-width: 1460px; margin: 40px auto 80px; padding: 0 20px; }}
+ .block h2 {{ font-size: 28px; color: #3b4151; margin: 0 0 6px; }}
+ .block p {{ color: #3b4151; margin: 0 0 16px; }}
  .tabs {{ display: flex; gap: 8px; border-bottom: 2px solid #e3e3e3; }}
  .tabs button {{ border: 0; background: none; padding: 10px 18px; font-size: 16px;
    font-weight: 600; color: #6b6b6b; cursor: pointer; border-bottom: 3px solid transparent;
    margin-bottom: -2px; }}
  .tabs button.active {{ color: #49cc90; border-bottom-color: #49cc90; }}
- #swagger-specific .information-container, #swagger-specific .scheme-container {{ display: none; }}
+ #swagger-specific .information-container, #swagger-specific .scheme-container,
+ #swagger-admin .information-container, #swagger-admin .scheme-container {{ display: none; }}
 </style>
 </head><body>
 <div id="swagger-common"></div>
-<section id="specific">
+<section id="admin-section" class="block" hidden>
+  <h2>Administration</h2>
+  <p>Visible parce qu'une AdminKey valide est saisie dans Authorize.</p>
+  <div id="swagger-admin"></div>
+</section>
+<section id="specific" class="block">
   <h2>Endpoints propres à chaque agrégateur</h2>
   <p>Routes que MobileWallet ne propose que pour l'agrégateur choisi. La connexion (Authorize) reste la même.</p>
   <div class="tabs" id="tabs"></div>
@@ -236,6 +267,7 @@ function syncAuth(self) {{
       syncing = true;
       for (const [k, ui] of Object.entries(uis)) if (k !== self && ui) ui.authActions[name](payload);
       syncing = false;
+      onAuth(name, payload);
     }}
     return res;
   }};
@@ -247,7 +279,26 @@ function make(key, domId, url) {{
     plugins: [syncAuth(key)], persistAuthorization: true, deepLinking: false,
     defaultModelsExpandDepth: -1 }});
 }}
+// Section admin : le serveur ne livre ses routes qu'avec une AdminKey valide.
+async function loadAdmin(key) {{
+  const sec = document.getElementById("admin-section");
+  if (!key) {{ sec.hidden = true; uis.admin = null; return; }}
+  const r = await fetch("/openapi/admin.json", {{ headers: {{ "X-Admin-Key": key }} }});
+  if (!r.ok) {{ sec.hidden = true; uis.admin = null; return; }}
+  sec.hidden = false;
+  uis.admin = SwaggerUIBundle({{ spec: await r.json(), dom_id: "#swagger-admin",
+    presets: [SwaggerUIBundle.presets.apis], plugins: [syncAuth("admin")],
+    persistAuthorization: true, deepLinking: false, defaultModelsExpandDepth: -1 }});
+}}
+function onAuth(name, payload) {{
+  if (name === "authorize" && payload && payload.AdminKey) loadAdmin(payload.AdminKey.value);
+  if (name === "logout" && [].concat(payload || []).includes("AdminKey")) loadAdmin(null);
+}}
 uis.common = make("common", "#swagger-common", "/openapi/common.json");
+try {{
+  const saved = JSON.parse(localStorage.getItem("authorized") || "{{}}");
+  if (saved.AdminKey) loadAdmin(saved.AdminKey.value);
+}} catch (e) {{}}
 function show(agg) {{
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("active", b.dataset.agg === agg));
   uis.specific = make("specific", "#swagger-specific", "/openapi/" + agg + ".json");

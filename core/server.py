@@ -103,6 +103,7 @@ app = FastAPI(
     version="0.2",
     lifespan=lifespan,
     docs_url=None,
+    openapi_url=None,  # servi par core/openapi_docs (sans routes admin)
 )
 
 # Montage des routers par domaine.

@@ -92,7 +92,10 @@ FastAPI génère automatiquement la doc OpenAPI :
 - **Swagger UI** : `http://localhost:7332/docs` — routes communes en haut (chaque
   champ dit à quels agrégateurs il s'applique), puis un onglet par agrégateur pour
   ses routes propres ; **Authorize** commun (ApiKey `sk_…`, DevJWT de `/login`, AdminKey).
-- **Schémas** : `/openapi/common.json`, `/openapi/<agrégateur>.json` (routes propres)
+- **Section Administration** : n'apparaît qu'après une **AdminKey valide** dans
+  Authorize (`/openapi/admin.json` exige `X-Admin-Key`, sinon 401).
+- **Schémas publics** (sans routes admin) : `/openapi.json`, `/openapi/common.json`,
+  `/openapi/<agrégateur>.json`. `docs/openapi.json` (versionné) reste complet.
 - **ReDoc** : `http://localhost:7332/redoc`
 - **Schéma brut** : `http://localhost:7332/openapi.json`
 
