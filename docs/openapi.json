@@ -358,6 +358,34 @@
       }
     },
     "/apps": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Lister vos apps",
+        "operationId": "list_apps_apps_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "JWT manquant ou invalide."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          }
+        },
+        "security": [
+          {
+            "DevJWT": []
+          }
+        ]
+      },
       "post": {
         "tags": [
           "projects"
@@ -365,26 +393,15 @@
         "summary": "Créer une app (projet)",
         "description": "Crée une app pour VOTRE compte. Génère son webhook_secret HMAC (non exposé).",
         "operationId": "create_app_apps_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
-            }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AppCreateSelf"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -411,51 +428,12 @@
               }
             }
           }
-        }
-      },
-      "get": {
-        "tags": [
-          "projects"
-        ],
-        "summary": "Lister vos apps",
-        "operationId": "list_apps_apps_get",
-        "parameters": [
+        },
+        "security": [
           {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
-            }
+            "DevJWT": []
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "JWT manquant ou invalide."
-          },
-          "503": {
-            "description": "Supabase non configuré."
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
+        ]
       }
     },
     "/apps/{app_id}/keys": {
@@ -465,6 +443,11 @@
         ],
         "summary": "Générer une clé API (clé en clair montrée une seule fois)",
         "operationId": "create_key_apps__app_id__keys_post",
+        "security": [
+          {
+            "DevJWT": []
+          }
+        ],
         "parameters": [
           {
             "name": "app_id",
@@ -473,15 +456,6 @@
             "schema": {
               "type": "integer",
               "title": "App Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
             }
           }
         ],
@@ -530,6 +504,11 @@
         ],
         "summary": "Lister les clés d'une app (sans la clé en clair)",
         "operationId": "list_keys_apps__app_id__keys_get",
+        "security": [
+          {
+            "DevJWT": []
+          }
+        ],
         "parameters": [
           {
             "name": "app_id",
@@ -538,15 +517,6 @@
             "schema": {
               "type": "integer",
               "title": "App Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
             }
           }
         ],
@@ -585,6 +555,11 @@
         ],
         "summary": "Révoquer une clé API",
         "operationId": "revoke_key_apps__app_id__keys__key_id__revoke_post",
+        "security": [
+          {
+            "DevJWT": []
+          }
+        ],
         "parameters": [
           {
             "name": "app_id",
@@ -602,15 +577,6 @@
             "schema": {
               "type": "integer",
               "title": "Key Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
             }
           }
         ],
@@ -650,26 +616,15 @@
         "summary": "Exécuter un paiement",
         "description": "Exécute un paiement via l'agrégateur et le mode demandés.\n\nAuthentifié par clé API (`Authorization: Bearer <clé>`). La transaction est\nrattachée à l'app de la clé (isolation) ; `end_user_ref` est conservé tel quel.\n\n- **auto** (défaut) : replay d'abord ; bascule navigateur si non concluant\n  (selon `fallback_browser`).\n- **browser** : flux IA complet ; déduit et persiste le template curl.\n- **replay** : rejoue via le template stocké (409 si absent).",
         "operationId": "pay_pay_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
-            }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PayRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -700,7 +655,12 @@
           "503": {
             "description": "Service de paiement amont temporairement indisponible (code=network_unavailable). Réessayer plus tard."
           }
-        }
+        },
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ]
       }
     },
     "/payout/quote": {
@@ -711,6 +671,11 @@
         "summary": "Devis d'un virement : frais débités du solde, sans rien débiter",
         "description": "Ce que coûterait ce virement au solde de votre app. Vers le réseau de vos\nencaissements, les frais sont déjà prépayés (fee = 0) ; vers l'autre réseau,\nils sont pris sur le solde au taux de ce réseau, arrondis au franc supérieur.",
         "operationId": "payout_quote_payout_quote_get",
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "amount",
@@ -743,15 +708,6 @@
               "type": "string",
               "default": "digikuntz",
               "title": "Aggregator"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
             }
           }
         ],
@@ -787,26 +743,15 @@
         "summary": "Virements groupés (jusqu'à 20)",
         "description": "Envoie jusqu'à 20 virements en un seul appel agrégateur. Chaque virement\nest validé et débité séparément : un refus (solde, doublon, opérateur\nindisponible…) n'empêche pas les autres. Résultat par élément (`index`).",
         "operationId": "payout_bulk_payout_bulk_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
-            }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/BulkPayoutRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -833,7 +778,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ]
       }
     },
     "/payout/{transaction_ref}/cancel": {
@@ -844,6 +794,11 @@
         "summary": "Annuler un virement en file d'attente",
         "description": "Annule un virement que l'agrégateur n'a pas encore envoyé (en file\nd'attente, ex. opérateur lent). Accepté -> le statut `cancelled` arrive par\nwebhook et le solde est remboursé. Un virement déjà en cours d'envoi chez\nl'opérateur ne peut plus être annulé (refus de l'agrégateur).",
         "operationId": "cancel_payout_payout__transaction_ref__cancel_post",
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "transaction_ref",
@@ -852,15 +807,6 @@
             "schema": {
               "type": "string",
               "title": "Transaction Ref"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
             }
           }
         ],
@@ -900,26 +846,15 @@
         "summary": "Effectuer un virement (payout)",
         "description": "Effectue un virement sortant débité du solde de VOTRE app.\n\nLe solde de l'app = somme de ses encaissements réussis − ses retraits. Un\nvirement supérieur au solde disponible est refusé (422) avant tout appel amont.\nLe verdict final (`successful`/`failed`/`cancelled`) est poussé via webhook +\nSocket.IO ; consultable aussi par `GET /status/{transaction_id}`.",
         "operationId": "payout_payout_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
-            }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PayoutRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -950,7 +885,12 @@
           "503": {
             "description": "Service de paiement amont temporairement indisponible."
           }
-        }
+        },
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ]
       }
     },
     "/payout/{transaction_ref}/check": {
@@ -961,6 +901,11 @@
         "summary": "Vérifier le statut d'un virement chez l'agrégateur",
         "description": "Interroge UNE fois l'agrégateur sur un virement de votre app (pas de\npolling : le verdict arrive normalement par webhook). Si le statut est final\n(`successful`/`failed`/`cancelled`), il est appliqué tout de suite\n(BD + remboursement si échec + notification).",
         "operationId": "check_payout_payout__transaction_ref__check_get",
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "transaction_ref",
@@ -969,15 +914,6 @@
             "schema": {
               "type": "string",
               "title": "Transaction Ref"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
             }
           }
         ],
@@ -1017,26 +953,15 @@
         "summary": "Créer une page de paiement hébergée",
         "description": "Crée une page de paiement chez l'agrégateur et renvoie `redirect_url`\noù envoyer votre client. Suivi : `GET /status/{transaction_id}`, webhook,\nSocket.IO ; le client revient ensuite sur `return_url`.\n\nÀ l'arrivée sur `return_url`, ne considérez PAS le paiement comme fait :\nlisez `GET /status/{transaction_id}` (ou `/check`). Une page abandonnée\npasse `failed` environ 16 min après sa création.",
         "operationId": "payment_page_pay_page_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
-            }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PaymentPageRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -1066,7 +991,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ]
       }
     },
     "/transactions": {
@@ -1077,6 +1007,11 @@
         "summary": "Historique des transactions",
         "description": "Dernières transactions de VOTRE app (isolation par clé API).",
         "operationId": "list_transactions_transactions_get",
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "limit",
@@ -1086,15 +1021,6 @@
               "type": "integer",
               "default": 50,
               "title": "Limit"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
             }
           }
         ],
@@ -1128,17 +1054,6 @@
         "summary": "Solde de votre app",
         "description": "Solde logique de VOTRE app = somme de vos encaissements réussis − vos retraits.\n\nC'est le montant disponible pour un virement (`POST /payout`).",
         "operationId": "app_balance_balance_get",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1147,18 +1062,13 @@
                 "schema": {}
               }
             }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
           }
-        }
+        },
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ]
       }
     },
     "/status/{transaction_ref}": {
@@ -1169,6 +1079,11 @@
         "summary": "Statut d'une transaction",
         "description": "Récupère une transaction de votre app par sa référence.",
         "operationId": "transaction_status_status__transaction_ref__get",
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "transaction_ref",
@@ -1177,15 +1092,6 @@
             "schema": {
               "type": "string",
               "title": "Transaction Ref"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
             }
           }
         ],
@@ -1222,6 +1128,11 @@
         "summary": "Vérifier le statut d'une transaction chez l'agrégateur",
         "description": "Interroge UNE fois l'agrégateur (pas de polling) sur une transaction de\nvotre app, payin ou payout. Un statut final est appliqué tout de suite\n(BD + comptabilité + notification). Déjà finale : renvoie le statut en base.",
         "operationId": "check_transaction_status_status__transaction_ref__check_get",
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "transaction_ref",
@@ -1230,15 +1141,6 @@
             "schema": {
               "type": "string",
               "title": "Transaction Ref"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
             }
           }
         ],
@@ -1278,6 +1180,11 @@
         "summary": "Trace IA d'une transaction (mode browser)",
         "description": "Trace tour-par-tour de l'agent IA pour une transaction browser de votre app.\n\nChaque entrée : ce que l'IA a vu (url, nb d'éléments), sa pensée, les actions\njouées, et si l'objectif a été atteint. Vide pour un paiement en mode replay.",
         "operationId": "transaction_trace_transactions__transaction_ref__trace_get",
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "transaction_ref",
@@ -1286,15 +1193,6 @@
             "schema": {
               "type": "string",
               "title": "Transaction Ref"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
             }
           }
         ],
@@ -1331,6 +1229,11 @@
         "summary": "Erreurs détaillées d'une transaction (browser/replay)",
         "description": "Erreurs détaillées d'une transaction de votre app.\n\nChaque entrée précise le moteur (`engine`: browser/replay) et la SOURCE\n(`source`: ai / browser / transaction / replay) pour savoir exactement où ça\na cassé, plus la catégorie, le message clair et les détails. Vide si la\ntransaction a réussi.",
         "operationId": "transaction_errors_transactions__transaction_ref__errors_get",
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "transaction_ref",
@@ -1339,15 +1242,6 @@
             "schema": {
               "type": "string",
               "title": "Transaction Ref"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
             }
           }
         ],
@@ -1384,6 +1278,11 @@
         "summary": "Débloquer une transaction pending",
         "description": "Force une transaction restée **pending** à **cancelled** (de votre app).\n\nSert à débloquer une transaction coincée (ex: serveur interrompu avant le\nverdict) qui empêcherait un nouveau paiement sur le même numéro\n(`409 pending_exists`). N'agit que sur une ligne encore `pending` de votre\napp — ne réécrit jamais un verdict déjà acté.",
         "operationId": "cancel_transaction_transactions__tx_id__cancel_post",
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "tx_id",
@@ -1392,15 +1291,6 @@
             "schema": {
               "type": "integer",
               "title": "Tx Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
             }
           }
         ],
@@ -1440,6 +1330,11 @@
         "summary": "Faire renvoyer le callback final par l'agrégateur",
         "description": "Demande à l'agrégateur de renvoyer son callback de statut final (utile si\nun webhook s'est perdu). Le statut est alors réappliqué (BD, solde,\nnotification), sans doublon. Transaction encore en cours : refusé par l'agrégateur.",
         "operationId": "resend_callback_status__transaction_ref__resend_callback_post",
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "transaction_ref",
@@ -1448,15 +1343,6 @@
             "schema": {
               "type": "string",
               "title": "Transaction Ref"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
             }
           }
         ],
@@ -1496,6 +1382,11 @@
         "summary": "Disponibilité des opérateurs",
         "description": "Statut par opérateur et par opération (deposit, payout, refund) :\nOPERATIONAL (normal), DELAYED (payouts/refunds mis en file : acceptés,\nexécutés plus tard), CLOSED (refusé : utilisez l'autre réseau ; aussi quand l'agrégateur a\ndéclaré un incident, détail dans `incidents`).\nListe vide si l'agrégateur ne publie pas cette information.",
         "operationId": "operators_availability_availability_get",
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "aggregator",
@@ -1505,15 +1396,6 @@
               "type": "string",
               "default": "pawapay",
               "title": "Aggregator"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
             }
           }
         ],
@@ -1553,6 +1435,11 @@
         "summary": "Montant minimum (et maximum) d'un dépôt",
         "description": "`min` : en dessous, /pay et /pay/page refusent (422 amount_too_low).\nC'est le plus grand entre le minimum de l'agrégateur et le nôtre (montant qui\nlaisse au moins 1 F à votre app après frais, commission et réserve de\npayout, tous arrondis au franc supérieur). Recalculé selon la config.",
         "operationId": "deposit_minimum_pay_minimum_get",
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "aggregator",
@@ -1581,15 +1468,6 @@
               "title": "Network"
             },
             "description": "MTN | Orange ; vide = page de paiement"
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
-            }
           }
         ],
         "responses": {
@@ -1625,26 +1503,15 @@
         "summary": "Deviner l'opérateur d'un numéro",
         "description": "À partir d'un numéro saisi librement (espaces, +237, 0…), renvoie le\nnuméro au format international et son opérateur (`network` utilisable\ntel quel dans /pay).",
         "operationId": "predict_network_operators_predict_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Authorization"
-            }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PredictNetworkRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -1668,7 +1535,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ]
       }
     },
     "/admin/developers": {
@@ -1678,26 +1550,15 @@
         ],
         "summary": "Créer un developer (compte intégrateur)",
         "operationId": "create_developer_admin_developers_post",
-        "parameters": [
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
-            }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/DeveloperCreate"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -1724,7 +1585,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ]
       }
     },
     "/admin/apps": {
@@ -1735,26 +1601,15 @@
         "summary": "Créer une app pour un developer",
         "description": "Génère le `webhook_secret` HMAC de l'app (utilisé pour signer les webhooks).\nLe secret n'est pas renvoyé ; il sert côté serveur à la signature.",
         "operationId": "create_app_admin_apps_post",
-        "parameters": [
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
-            }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AppCreate"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -1781,7 +1636,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ]
       }
     },
     "/admin/developers/{developer_id}/apps": {
@@ -1791,6 +1651,11 @@
         ],
         "summary": "Lister les apps d'un developer",
         "operationId": "list_apps_admin_developers__developer_id__apps_get",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "developer_id",
@@ -1799,15 +1664,6 @@
             "schema": {
               "type": "integer",
               "title": "Developer Id"
-            }
-          },
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
             }
           }
         ],
@@ -1846,6 +1702,11 @@
         ],
         "summary": "Générer une clé API pour une app (clé en clair montrée 1 fois)",
         "operationId": "create_key_admin_apps__app_id__keys_post",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "app_id",
@@ -1854,15 +1715,6 @@
             "schema": {
               "type": "integer",
               "title": "App Id"
-            }
-          },
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
             }
           }
         ],
@@ -1911,6 +1763,11 @@
         ],
         "summary": "Lister les clés d'une app (sans la clé en clair)",
         "operationId": "list_keys_admin_apps__app_id__keys_get",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "app_id",
@@ -1919,15 +1776,6 @@
             "schema": {
               "type": "integer",
               "title": "App Id"
-            }
-          },
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
             }
           }
         ],
@@ -1967,6 +1815,11 @@
         "summary": "Révoquer une clé API",
         "description": "Désactive la clé (effet immédiat : purge aussi le cache de résolution).",
         "operationId": "revoke_key_admin_apps__app_id__keys__key_id__revoke_post",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "app_id",
@@ -1984,15 +1837,6 @@
             "schema": {
               "type": "integer",
               "title": "Key Id"
-            }
-          },
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
             }
           }
         ],
@@ -2032,6 +1876,11 @@
         "summary": "Lancer un paiement pour une app (sans clé API)",
         "description": "Exécute un paiement pour l'app `app_id` sans passer par une clé API.\n\nLa transaction est rattachée à l'app (isolation) avec `api_key_id=None`\npour traçabilité (lancé par admin). Même logique que `POST /pay`.",
         "operationId": "admin_pay_admin_apps__app_id__pay_post",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "app_id",
@@ -2040,15 +1889,6 @@
             "schema": {
               "type": "integer",
               "title": "App Id"
-            }
-          },
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
             }
           }
         ],
@@ -2105,6 +1945,11 @@
         "summary": "Lancer un virement (payout) pour une app (sans clé API)",
         "description": "Lance un virement pour l'app `app_id` sans clé API (débité de SON solde).",
         "operationId": "admin_payout_admin_apps__app_id__payout_post",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "app_id",
@@ -2113,15 +1958,6 @@
             "schema": {
               "type": "integer",
               "title": "App Id"
-            }
-          },
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
             }
           }
         ],
@@ -2175,6 +2011,11 @@
         "summary": "Lire la commission MW d'une app (None = défaut agrégateur)",
         "description": "Retourne la commission spécifique de l'app, ou null si elle utilise le défaut.",
         "operationId": "admin_get_app_commission_admin_apps__app_id__commission_get",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "app_id",
@@ -2183,15 +2024,6 @@
             "schema": {
               "type": "integer",
               "title": "App Id"
-            }
-          },
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
             }
           }
         ],
@@ -2229,6 +2061,11 @@
         "summary": "Définir une commission MW spécifique pour une app",
         "description": "Pose ou efface la commission MW d'une app.\n\n- `mw_commission_type` + `mw_commission_value` non null → commission spécifique.\n- Les deux à null → revenir au défaut de l'agrégateur.\nEffet immédiat sur les prochains payins de cette app.",
         "operationId": "admin_set_app_commission_admin_apps__app_id__commission_put",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "app_id",
@@ -2237,15 +2074,6 @@
             "schema": {
               "type": "integer",
               "title": "App Id"
-            }
-          },
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
             }
           }
         ],
@@ -2295,6 +2123,11 @@
         "summary": "Solde courant d'une app",
         "description": "Solde réel de l'app (retirable) + sa réserve de frais de payout prépayés,\net le total des deux. Vue admin : l'app elle-même ne voit que `balance`.",
         "operationId": "admin_app_balance_admin_apps__app_id__balance_get",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "app_id",
@@ -2303,15 +2136,6 @@
             "schema": {
               "type": "integer",
               "title": "App Id"
-            }
-          },
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
             }
           }
         ],
@@ -2351,6 +2175,11 @@
         "summary": "Créditer manuellement le solde d'une app",
         "description": "Crédit MANUEL du solde d'une app (ajustement admin, sans payin rattaché).\n\n⚠️ Crée de l'argent qui n'existe pas forcément chez DigiKUNTZ : peut introduire\nun écart visible dans `/admin/reconciliation`. À réserver aux ajustements/tests.",
         "operationId": "admin_app_credit_admin_apps__app_id__credit_post",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "app_id",
@@ -2359,15 +2188,6 @@
             "schema": {
               "type": "integer",
               "title": "App Id"
-            }
-          },
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
             }
           }
         ],
@@ -2417,17 +2237,6 @@
         "summary": "Amorcer le ledger depuis l'historique des payins",
         "description": "Crédite (idempotent) tous les payins 'successful' déjà en base qui n'ont pas\nencore de mouvement ledger. À lancer une fois pour initialiser les soldes.",
         "operationId": "admin_ledger_backfill_admin_ledger_backfill_post",
-        "parameters": [
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2442,18 +2251,13 @@
           },
           "503": {
             "description": "Supabase non configuré."
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
           }
-        }
+        },
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ]
       }
     },
     "/admin/digikuntz/balance": {
@@ -2464,17 +2268,6 @@
         "summary": "Solde du compte global DigiKUNTZ (trésorerie)",
         "description": "Solde RÉEL du compte global DigiKUNTZ (tous users/apps confondus).\n\nDonnée de trésorerie sensible → admin uniquement. Un client ne voit que le\nsolde de son app (`GET /balance`). 503 si DigiKUNTZ injoignable.",
         "operationId": "admin_global_balance_admin_digikuntz_balance_get",
-        "parameters": [
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2489,18 +2282,13 @@
           },
           "503": {
             "description": "Supabase non configuré."
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
           }
-        }
+        },
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ]
       }
     },
     "/admin/pawapay/balance": {
@@ -2511,17 +2299,6 @@
         "summary": "Soldes des wallets pawaPay (trésorerie)",
         "description": "Soldes RÉELS des wallets pawaPay (GET /v2/wallet-balances). Admin uniquement.\n503 si pawaPay injoignable.",
         "operationId": "admin_pawapay_balance_admin_pawapay_balance_get",
-        "parameters": [
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2536,18 +2313,13 @@
           },
           "503": {
             "description": "Supabase non configuré."
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
           }
-        }
+        },
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ]
       }
     },
     "/admin/pawapay/config": {
@@ -2558,17 +2330,6 @@
         "summary": "Configuration du compte pawaPay (opérateurs, min/max)",
         "description": "Configuration active du compte marchand pawaPay (GET /v2/active-conf) :\nopérateurs disponibles et montants min/max par opération (dépôt, payout,\nremboursement). Admin uniquement. 503 si pawaPay injoignable.",
         "operationId": "admin_pawapay_config_admin_pawapay_config_get",
-        "parameters": [
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2583,18 +2344,13 @@
           },
           "503": {
             "description": "Supabase non configuré."
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
           }
-        }
+        },
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ]
       }
     },
     "/admin/pawapay/raw-payout": {
@@ -2604,6 +2360,11 @@
         ],
         "summary": "TEMP : POST /v2/payouts brut (diagnostic)",
         "operationId": "admin_pawapay_raw_payout_admin_pawapay_raw_payout_post",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "amount",
@@ -2630,15 +2391,6 @@
             "schema": {
               "type": "string",
               "title": "Network"
-            }
-          },
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
             }
           }
         ],
@@ -2677,6 +2429,11 @@
         ],
         "summary": "TEMP : GET /v2/payouts/{id} brut",
         "operationId": "admin_pawapay_raw_payout_status_admin_pawapay_raw_payout__payout_id__get",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "payout_id",
@@ -2685,15 +2442,6 @@
             "schema": {
               "type": "string",
               "title": "Payout Id"
-            }
-          },
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
             }
           }
         ],
@@ -2733,17 +2481,6 @@
         "summary": "Réconciliation par agrégateur : soldes internes vs soldes réels",
         "description": "Pour CHAQUE agrégateur : Σ soldes apps + Σ réserves de frais des apps +\nsolde plateforme doit égaler le solde réel chez lui. Un écart < 1 XAF\n(centimes d'arrondi) est normal ; il est reversé à la plateforme dès qu'il\natteint 1 XAF (POST /admin/treasury/sweep, automatique après chaque règlement).",
         "operationId": "admin_reconciliation_admin_reconciliation_get",
-        "parameters": [
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2758,18 +2495,13 @@
           },
           "503": {
             "description": "Supabase non configuré."
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
           }
-        }
+        },
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ]
       }
     },
     "/admin/treasury/sweep": {
@@ -2780,17 +2512,6 @@
         "summary": "Reverser le surplus d'arrondi à la plateforme",
         "description": "Crédite à la plateforme les francs entiers de surplus d'arrondi (rien si\nune transaction est en vol). Déclenché aussi automatiquement.",
         "operationId": "admin_treasury_sweep_admin_treasury_sweep_post",
-        "parameters": [
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2805,18 +2526,13 @@
           },
           "503": {
             "description": "Supabase non configuré."
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
           }
-        }
+        },
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ]
       }
     },
     "/admin/platform/balance": {
@@ -2827,17 +2543,6 @@
         "summary": "Solde plateforme (argent propre de MobileWallet)",
         "description": "Solde plateforme = marge/frais/flottant de MobileWallet. Peut être négatif\n(payouts plateforme non encore rechargés).",
         "operationId": "admin_platform_balance_admin_platform_balance_get",
-        "parameters": [
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2852,18 +2557,13 @@
           },
           "503": {
             "description": "Supabase non configuré."
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
           }
-        }
+        },
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ]
       }
     },
     "/admin/platform/credit": {
@@ -2874,26 +2574,15 @@
         "summary": "Recharger le solde plateforme",
         "description": "Ajoute des fonds au solde plateforme (recharge manuelle).",
         "operationId": "admin_platform_credit_admin_platform_credit_post",
-        "parameters": [
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
-            }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PlatformCredit"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -2920,7 +2609,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ]
       }
     },
     "/admin/platform/payout": {
@@ -2931,26 +2625,15 @@
         "summary": "Virement débité du solde PLATEFORME (pas d'une app)",
         "description": "Virement sortant débité du solde PLATEFORME (argent propre de MobileWallet).\n\nPAS de contrôle de solde (le solde peut devenir négatif → recharger via\n`POST /admin/platform/credit`). Suivi identique : polling auto + webhook.",
         "operationId": "admin_platform_payout_admin_platform_payout_post",
-        "parameters": [
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
-            }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AdminPayoutRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -2988,7 +2671,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ]
       }
     },
     "/admin/aggregators/{name}/fees": {
@@ -2999,6 +2687,11 @@
         "summary": "Lire la config de commission d'un agrégateur",
         "description": "Retourne la config complète (taux agrégateur + commission MW) d'un agrégateur.",
         "operationId": "admin_get_aggregator_fees_admin_aggregators__name__fees_get",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "name",
@@ -3007,15 +2700,6 @@
             "schema": {
               "type": "string",
               "title": "Name"
-            }
-          },
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
             }
           }
         ],
@@ -3053,6 +2737,11 @@
         "summary": "Modifier la config de commission d'un agrégateur",
         "description": "Crée ou met à jour les taux de commission pour un agrégateur.\n\n- `aggregator_fee_rate` : taux prélevé par l'agrégateur (ex. 0.05 = 5%).\n- `mw_commission_type` + `mw_commission_value` : commission MobileWallet sur le net.\n  Type `percent` (ex. 0.05 = 5%) ou `flat` (montant fixe XAF, ex. 500).\n\nEffet immédiat sur les prochains payins : aucun redémarrage nécessaire.",
         "operationId": "admin_update_aggregator_fees_admin_aggregators__name__fees_put",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
         "parameters": [
           {
             "name": "name",
@@ -3061,15 +2750,6 @@
             "schema": {
               "type": "string",
               "title": "Name"
-            }
-          },
-          {
-            "name": "x-admin-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "X-Admin-Key"
             }
           }
         ],

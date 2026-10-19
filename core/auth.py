@@ -17,7 +17,8 @@ import secrets
 import time
 from dataclasses import dataclass
 
-from fastapi import Header, HTTPException
+from fastapi import HTTPException, Security
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
 from core import tenants
 from core.config import settings
@@ -103,13 +104,26 @@ def _parse_bearer(authorization: str | None) -> str:
     return parts[1].strip()
 
 
-async def require_api_key(authorization: str = Header(None)) -> AuthContext:
+# Schémas de sécurité OpenAPI : relient chaque route à son bouton Authorize de
+# Swagger (sinon Swagger n'envoie pas l'en-tête). auto_error=False : les 401
+# restent ceux de _parse_bearer / require_admin.
+_api_key_scheme = HTTPBearer(scheme_name="ApiKey", auto_error=False)
+_admin_key_scheme = APIKeyHeader(name="X-Admin-Key", scheme_name="AdminKey", auto_error=False)
+
+
+def bearer_header(creds: HTTPAuthorizationCredentials | None) -> str | None:
+    """Recompose l'en-tête « Bearer <jeton> » attendu par _parse_bearer."""
+    return f"Bearer {creds.credentials}" if creds else None
+
+
+async def require_api_key(
+        creds: HTTPAuthorizationCredentials | None = Security(_api_key_scheme)) -> AuthContext:
     """Authentifie l'appelant par sa clé API et renvoie son AuthContext.
 
     401 si la clé est absente/mal formée ou inconnue ; 403 si la clé, l'app ou
     le developer est désactivé.
     """
-    full_key = _parse_bearer(authorization)
+    full_key = _parse_bearer(bearer_header(creds))
     key_hash = hash_key(full_key)
 
     ctx = _cache_get(key_hash)
@@ -137,7 +151,7 @@ async def require_api_key(authorization: str = Header(None)) -> AuthContext:
     return ctx
 
 
-async def require_admin(x_admin_key: str = Header(None)) -> None:
+async def require_admin(x_admin_key: str | None = Security(_admin_key_scheme)) -> None:
     """Garde les endpoints de gestion (developers/apps/clés). 401 si la clé admin
     est absente, non configurée côté serveur, ou ne correspond pas."""
     expected = settings.admin_api_key

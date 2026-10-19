@@ -13,7 +13,8 @@ from dataclasses import dataclass
 
 import bcrypt
 import jwt
-from fastapi import Header, HTTPException
+from fastapi import HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from core import tenants
 from core.config import settings
@@ -93,10 +94,15 @@ def _parse_bearer(authorization: str | None) -> str:
     return parts[1].strip()
 
 
-async def require_dev(authorization: str = Header(None)) -> DevContext:
+# Schéma OpenAPI « DevJWT » : relie les routes developer au bouton Authorize.
+_dev_scheme = HTTPBearer(scheme_name="DevJWT", auto_error=False)
+
+
+async def require_dev(
+        creds: HTTPAuthorizationCredentials | None = Security(_dev_scheme)) -> DevContext:
     """Authentifie le developer par son JWT d'accès. 401 si invalide ; 403 si
     le compte est désactivé."""
-    token = _parse_bearer(authorization)
+    token = _parse_bearer(f"Bearer {creds.credentials}" if creds else None)
     developer_id = decode_access_token(token)
 
     dev = await tenants.get_developer(developer_id)

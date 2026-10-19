@@ -12,6 +12,7 @@ Le serveur Socket.IO est monté en ASGI par-dessus FastAPI (cf. core/server.py).
 import logging
 
 import socketio
+from fastapi.security import HTTPAuthorizationCredentials
 
 from core import auth
 
@@ -33,7 +34,8 @@ async def connect(sid, environ, auth_data):
     if not token:
         raise socketio.exceptions.ConnectionRefusedError("clé API requise (auth.token)")
     try:
-        ctx = await auth.require_api_key(authorization=f"Bearer {token}")
+        ctx = await auth.require_api_key(
+            HTTPAuthorizationCredentials(scheme="Bearer", credentials=token))
     except Exception:  # HTTPException (401/403) ou autre -> refus
         raise socketio.exceptions.ConnectionRefusedError("clé API invalide ou inactive")
 
