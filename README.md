@@ -168,7 +168,7 @@ FastAPI génère automatiquement la doc OpenAPI :
   "network": "Orangemoney",     // ou "MTN"
   "email": "client@example.com",
   "aggregator": "digikuntz",
-  "mode": "auto",               // "auto" | "browser" | "replay"
+  "mode": "auto",               // "auto" | "browser" | "replay" | "direct"
   "fallback_browser": true      // mode auto : bascule navigateur si replay non concluant
 }
 ```
@@ -178,6 +178,8 @@ FastAPI génère automatiquement la doc OpenAPI :
   `unknown`), bascule sur le **navigateur** quand `fallback_browser=true`.
 - `browser` — flux IA complet ; **déduit et persiste** le template curl.
 - `replay` — rejoue via le template stocké. **409** si aucun template (lancer `browser` d'abord).
+- `direct` — charge directe DigiKUNTZ (`POST /dev/direct-charge`) : USSD poussé sans
+  navigateur ni page Flutterwave, verdict par webhook/polling. Réseaux `MTN` / `ORANGEMONEY`.
 
 > **Mode mock** (`MOCK_PAYMENTS=true`) — `/pay` simule un paiement sans appeler DigiKUNTZ :
 > réponse `ussd_sent` immédiate (avec `ussd_code` : code à composer si la demande de PIN n'arrive pas, ex. `*126#` pour MTN), puis verdict final (`successful`/`cancelled`) après un court

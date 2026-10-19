@@ -16,9 +16,7 @@ Philosophie CLAUDE.md : les statuts payout_* sont des FAITS opérateur mécaniqu
 direct est l'exception explicitement autorisée. Aucune IA n'intervient ici.
 """
 
-import asyncio
 import logging
-import time
 
 import httpx
 
@@ -97,53 +95,10 @@ def friendly_msg(status: str) -> str:
 
 
 async def poll_payout_status(provider_id: str) -> dict:
-    """Poll GET {base}/transaction jusqu'à un statut terminal pour ce payout.
-
-    Calqué sur status_poll.poll_verify_flutterwave : écoute AUSSI le registre
-    webhook⇄polling (le premier au terminal gagne), SANS TIMEOUT (l'opérateur
-    finit toujours par trancher). Retourne {status, message, settled_by}.
-    """
-    ev = status_poll.registry.register(provider_id) if provider_id else None
-    log.info("poll_payout_status: provider_id=%s (sans timeout)", provider_id)
-    start = time.monotonic()
-    i = 0
-    try:
-        while True:
-            # (a) le webhook a-t-il déjà livré le verdict ? -> on s'arrête net.
-            if ev is not None and ev.is_set():
-                v = status_poll.registry.take_verdict(provider_id)
-                if v and v.get("status") in _TERMINAL:
-                    log.info("poll_payout_status: verdict WEBHOOK %s", v["status"])
-                    return {"status": v["status"],
-                            "message": friendly_msg(v["status"]),
-                            "settled_by": "webhook"}
-            i += 1
-            res = await status_poll.fetch_status(provider_id)
-            if res is not None:
-                internal = res["internal"]
-                elapsed = int(time.monotonic() - start)
-                log.info("payout poll %d (t+%ds): raw=%s -> %s",
-                         i, elapsed, res["raw"], internal)
-                if internal in _TERMINAL:
-                    # On a le verdict en premier : on le dépose pour un webhook
-                    # tardif (idempotence) et on conclut.
-                    if provider_id:
-                        status_poll.registry.deliver(
-                            provider_id,
-                            {"status": internal, "raw": res["raw"], "data": res.get("data")})
-                    return {"status": internal, "message": friendly_msg(internal),
-                            "settled_by": "polling"}
-            # Attente du prochain tick, interrompue tôt si le webhook livre.
-            if ev is not None:
-                try:
-                    await asyncio.wait_for(ev.wait(), timeout=2)
-                except asyncio.TimeoutError:
-                    pass
-            else:
-                await asyncio.sleep(2)
-    finally:
-        if provider_id:
-            status_poll.registry.close(provider_id)
+    """Poll GET {base}/transaction (+ registre webhook) jusqu'au statut terminal,
+    SANS TIMEOUT. Retourne {status, message, settled_by}."""
+    v = await status_poll.poll_transaction(provider_id, "payout")
+    return {**v, "message": friendly_msg(v["status"])}
 
 
 async def check_payout_status(provider_id: str) -> dict | None:

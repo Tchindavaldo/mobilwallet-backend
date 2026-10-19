@@ -150,8 +150,10 @@ async def _execute_payment(
                 "supported_aggregators": registry.names(),
             },
         )
-    # Agrégateur « API directe » (ex. pawaPay) : ni navigateur, ni replay.
-    if getattr(cls, "direct_api", False):
+    # Agrégateur « API directe » (ex. pawaPay), ou mode `direct` demandé à un
+    # agrégateur qui l'offre en plus du navigateur : ni navigateur, ni replay.
+    if getattr(cls, "direct_api", False) or (
+            req.mode == "direct" and getattr(cls, "supports_direct", False)):
         return await _execute_direct(cls, req, app_id, api_key_id, debug, app_name)
 
     browser = runtime.get_browser()
@@ -160,12 +162,14 @@ async def _execute_payment(
         raise HTTPException(500, "Not initialized")
 
     if req.mode not in ("auto", "browser", "replay"):
+        modes = ["auto", "browser", "replay"] + (
+            ["direct"] if getattr(cls, "supports_direct", False) else [])
         raise HTTPException(
             400,
             {
                 "error": "invalid_mode",
                 "message": f"Mode '{req.mode}' invalide.",
-                "supported_modes": ["auto", "browser", "replay"],
+                "supported_modes": modes,
             },
         )
 
