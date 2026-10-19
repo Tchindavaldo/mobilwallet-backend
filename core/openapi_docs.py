@@ -228,6 +228,7 @@ def install(app: FastAPI) -> None:
 _CDN = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14"
 _SWAGGER_HTML = f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>__TITLE__</title>
+<link rel="icon" href="https://fastapi.tiangolo.com/img/favicon.png">
 <link rel="stylesheet" href="{_CDN}/swagger-ui.css">
 <style>
  body {{ margin: 0; font-family: sans-serif; }}
