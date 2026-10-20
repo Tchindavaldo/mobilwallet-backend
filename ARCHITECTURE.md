@@ -152,8 +152,8 @@ ai_browser2/
 │                                 registre webhook⇄polling). Aucun navigateur/LLM/Flutterwave.
 │   └── pawapay/                  Agrégateur « API directe » (Merchant API v2, Bearer token) :
 │       ├── operations.py         predict-provider, resend-callback, fail-enqueued, payouts/bulk, paymentpage.
-│       ├── availability.py       GET /v2/availability (cache 60 s) -> état par réseau/opération, NOT_ENABLED si non activé sur le compte, CLOSED si incident sur la page de statut (ou résolu depuis < 1 h).
-│       ├── status_page.py        status.pawapay.io (API publique, cache 60 s) : incidents ouverts + résolus depuis < 1 h (COOLDOWN_S) pour /availability + état brut pour /availability/status-page.
+│       ├── availability.py       GET /v2/availability (cache 60 s) -> état par réseau/opération, NOT_ENABLED si non activé sur le compte. Seule source du blocage (la page de statut ne bloque pas).
+│       ├── status_page.py        status.pawapay.io (API publique, cache 60 s) : état brut pour /availability/status-page, INFORMATIF (ne bloque aucun paiement).
 │       ├── account_conf.py       GET /v2/active-conf (cache 10 min) : opérations activées sur le compte, min/max, code USSD de secours.
 │       ├── status_check.py       check_deposit_status : 1 appel GET /v2/deposits/{id} à la demande.
 │       ├── client.py             HTTP pawaPay : initiate_deposit/payout, fetch_status, soldes,
