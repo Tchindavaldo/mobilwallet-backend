@@ -18,7 +18,9 @@ class PayRequest(BaseModel):
         "(les autres caractères sont retirés). Défaut : « MobileWallet <nom de l'app> ».",
         examples=["Achat Yaammoo"],
     )
-    mode: str = Field("auto", description="auto | browser | replay.", examples=["auto"])
+    mode: str = Field("auto", description="auto | browser | replay | direct (charge directe "
+                      "sans navigateur, agrégateurs qui l'offrent : digikuntz). Ignoré par "
+                      "les agrégateurs API pure (pawapay).", examples=["auto"])
     fallback_browser: bool = Field(
         True,
         description="En mode auto : basculer sur le navigateur si le replay est non concluant.",

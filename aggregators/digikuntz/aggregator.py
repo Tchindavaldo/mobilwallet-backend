@@ -7,6 +7,7 @@ itself in the registry under the name "digikuntz".
 
 import json
 import logging
+import time
 
 from core.base import Aggregator, CurlTemplate, PaymentRequest, PaymentResult
 from core.browser import CapturedRequest
@@ -16,7 +17,7 @@ from core.upstream_errors import classify_upstream_error
 from core.registry import register
 
 from . import browser_flow
-from . import checkout_matchers, replay_flow
+from . import checkout_matchers, direct_charge, replay_flow, status_poll
 
 log = logging.getLogger("ai_browser2")
 
@@ -27,6 +28,8 @@ class DigikuntzAggregator(Aggregator):
     name = "digikuntz"
     # Canonical network values expected by DigiKUNTZ/Flutterwave.
     supported_networks = ["ORANGEMONEY", "MTN"]
+    # Mode `direct` de /pay disponible en plus du navigateur (charge directe).
+    supports_direct = True
 
     @property
     def _agent(self) -> "browser_flow.DigikuntzAgent":
@@ -49,7 +52,52 @@ class DigikuntzAggregator(Aggregator):
         await self._agent.decide_browser_outcome(req, loop_result, result, session=session)
 
     async def finalize_after_close(self, req, result) -> None:
+        if (result.poll_after_close or {}).get("kind") == "direct":
+            await self._finalize_direct(req, result)
+            return
         await self._agent.finalize_after_close(req, result)
+
+    # --- charge directe (mode `direct`, sans navigateur) ---
+    async def pay_direct(self, req: PaymentRequest, tx_id: int | None = None) -> PaymentResult:
+        """POST /direct-charge -> ussd_sent (+ poll_after_close) ou refus immédiat."""
+        result = PaymentResult()
+        try:
+            init = await direct_charge.initiate(req)
+        except direct_charge.DirectChargeUpstreamError as e:
+            result.error_code = e.code
+            result.final_status = "error"
+            return result
+        result.provider_charge_body = json.dumps(init["body"])[:5000]
+        result.provider_charge_response = json.dumps(init["response"], default=str)[:5000]
+        result.payment_status = init["raw_status"]
+        result.transaction_id = init["transaction_ref"] or init["provider_id"]
+        result.provider_transaction_id = init["provider_id"]
+        if self.db is not None and tx_id is not None and init["provider_id"]:
+            await self.db.set_provider_id(tx_id, init["provider_id"])
+        if init["internal_status"] == "pending":
+            result.final_status = "ussd_sent"
+            result.final_message = ("Demande de paiement envoyée. Validez-la sur votre "
+                                    "téléphone avec votre code PIN.")
+            result.ussd_sent_at = time.time()
+            result.poll_after_close = {"kind": "direct", "provider_id": init["provider_id"]}
+            return result
+        status = init["internal_status"]
+        result.final_status = status if status in ("successful", "cancelled") else "failed"
+        result.success = result.final_status == "successful"
+        result.error = init.get("message")
+        result.final_message = init.get("message") or status_poll.self_friendly_msg(
+            result.final_status, req.network)
+        return result
+
+    async def _finalize_direct(self, req, result) -> None:
+        v = await status_poll.poll_transaction(result.poll_after_close["provider_id"], "direct")
+        result.final_status = v["status"]
+        result.success = v["status"] == "successful"
+        result.final_message = status_poll.self_friendly_msg(v["status"], req.network)
+        result.settled_by = v["settled_by"]
+        result.poll_after_close = None
+        if result.success:
+            result.validated_at = time.time()
 
     def network_label(self, network: str) -> str:
         return replay_flow.network_label(network)

@@ -3765,7 +3765,7 @@
           "mode": {
             "type": "string",
             "title": "Mode",
-            "description": "auto | browser | replay.",
+            "description": "auto | browser | replay | direct (charge directe sans navigateur, agrégateurs qui l'offrent : digikuntz). Ignoré par les agrégateurs API pure (pawapay).",
             "default": "auto",
             "examples": [
               "auto"

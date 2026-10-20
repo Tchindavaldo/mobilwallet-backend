@@ -227,3 +227,42 @@ def self_friendly_msg(status: str, network: str) -> str:
     if status == "cancelled":
         return "Paiement annulé / non validé sur le USSD (par l'utilisateur ou l'opérateur)."
     return "Paiement échoué (refus ou solde insuffisant)."
+
+
+async def poll_transaction(provider_id: str, label: str = "transaction") -> dict:
+    """Poll GET {base}/transaction jusqu'à un statut terminal, en écoutant AUSSI
+    le registre webhook (le premier au terminal gagne), SANS TIMEOUT : l'opérateur
+    finit toujours par trancher. Partagé par le payout et la charge directe.
+    Retourne {status, settled_by}."""
+    ev = registry.register(provider_id) if provider_id else None
+    log.info("poll %s: provider_id=%s (sans timeout)", label, provider_id)
+    start = time.monotonic()
+    i = 0
+    try:
+        while True:
+            if ev is not None and ev.is_set():
+                v = registry.take_verdict(provider_id)
+                if v and v.get("status") in _TERMINAL:
+                    log.info("poll %s: verdict WEBHOOK %s", label, v["status"])
+                    return {"status": v["status"], "settled_by": "webhook"}
+            i += 1
+            res = await fetch_status(provider_id)
+            if res is not None:
+                internal = res["internal"]
+                log.info("%s poll %d (t+%ds): raw=%s -> %s", label, i,
+                         int(time.monotonic() - start), res["raw"], internal)
+                if internal in _TERMINAL:
+                    if provider_id:  # dépôt pour un webhook tardif (idempotence)
+                        registry.deliver(provider_id, {"status": internal, "raw": res["raw"],
+                                                       "data": res.get("data")})
+                    return {"status": internal, "settled_by": "polling"}
+            if ev is not None:
+                try:
+                    await asyncio.wait_for(ev.wait(), timeout=2)
+                except asyncio.TimeoutError:
+                    pass
+            else:
+                await asyncio.sleep(2)
+    finally:
+        if provider_id:
+            registry.close(provider_id)

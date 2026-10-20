@@ -145,6 +145,9 @@ ai_browser2/
 │       ├── status_poll.py        Polling statut DigiKUNTZ (GET {base}/transaction?transactionId=) :
 │       │                         source de vérité du verdict après USSD. payin_* -> interne, poll
 │       │                         jusqu'à un verdict terminal (sans timeout : l'opérateur tranche toujours). 0 token.
+│       │                         poll_transaction : boucle GET /transaction + registre webhook (payout + charge directe).
+│       ├── direct_charge.py      Charge directe (mode `direct` de /pay) : POST {base}/direct-charge -> USSD
+│       │                         poussé sans navigateur ; verdict via poll_transaction. En plus du navigateur.
 │       ├── replay_flow.py        Façade du mode curl replay : ré-exporte replay/ (imports `replay_flow.X`).
 │       ├── replay/               Mode curl replay (sans navigateur), découpé par rôle :
 │       │   ├── interpret.py      Codes Flutterwave -> (statut, message) : interpret_charge/verify/ping, libellés réseau/USSD.
@@ -234,7 +237,8 @@ ai_browser2/
      `successful` (depuis `validated_at`, délai court RETRY_WINDOW_SUCCESS_S = 1 min
      tous réseaux) dans le délai anti-doublon → 409 retry_too_soon ;
    - refus immédiat (`failed` sans USSD envoyé) / panne → relançable tout de suite.
-2. Insère la transaction `pending`, dispatch selon `mode` (auto/browser/replay) vers
+2. Insère la transaction `pending`, dispatch selon `mode` (auto/browser/replay, ou `direct` -> `pay_direct` sans navigateur
+   pour les agrégateurs `supports_direct`) vers
    l'agrégateur (`pay_via_browser` ou `replay`).
 3. **browser** : `run_browser_flow` acquiert une **session isolée**, crée la transaction
    DigiKUNTZ, ouvre le checkout Flutterwave, lance la **boucle IA** (remplir + Payer). Dès
