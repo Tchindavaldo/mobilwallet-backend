@@ -30,10 +30,12 @@ ai_browser2/
 ├── core/                         === MOTEUR GÉNÉRIQUE (agnostique de l'agrégateur) ===
 │   ├── server.py                 ASSEMBLAGE FastAPI seulement : crée l'app, lifespan (pool
 │   │                             navigateur + LLM dans runtime), monte les routers. Pas de logique.
+│   ├── background_jobs.py        Démarre au lancement `aggregators.<nom>.background.start()` s'il existe.
 │   ├── runtime.py                État partagé entre routers (browser/llm vivants) + helpers
 │   │                             transverses (seconds_since, fmt_duration).
 │   ├── routers/                  UN APIRouter PAR DOMAINE (logique des endpoints) :
 │   │   ├── availability.py       GET /availability (état des opérateurs), GET /availability/status-page (page de statut de l'agrégateur), GET /pay/minimum (min/max d'un dépôt) + POST /operators/predict.
+│   │   ├── admin_statements.py   POST /admin/{agg}/statements/sync + GET /admin/{agg}/statements (paginé).
 │   │   ├── payout_ops.py         POST /payout/bulk (≤20, un appel agrégateur) + POST /payout/{ref}/cancel.
 │   │   ├── payment_page.py       POST /pay/page : page de paiement hébergée -> redirect_url.
 │   │   ├── system.py             /health, /aggregators, /config/max-tabs.
@@ -155,6 +157,9 @@ ai_browser2/
 │   └── pawapay/                  Agrégateur « API directe » (Merchant API v2, Bearer token) :
 │       ├── operations.py         predict-provider, resend-callback, fail-enqueued, payouts/bulk, paymentpage.
 │       ├── availability.py       GET /v2/availability (cache 60 s) -> état par réseau/opération, NOT_ENABLED si non activé sur le compte, CLOSED si incident sur la page de statut (ou résolu depuis < 1 h).
+│       ├── statements.py         Relevés (POST /v2/statements -> CSV) stockés dans pawapay_statement_lines,
+│       │                         synchro auto (PAWAPAY_STATEMENT_SYNC day|week|month, recouvrement 2 j).
+│       ├── background.py         Tâches de fond pawaPay (synchro des relevés), lancées par core/background_jobs.
 │       ├── status_page.py        status.pawapay.io (API publique, cache 60 s) : incidents ouverts + résolus depuis < 1 h (COOLDOWN_S) pour /availability + état brut pour /availability/status-page.
 │       ├── account_conf.py       GET /v2/active-conf (cache 10 min) : opérations activées sur le compte, min/max, code USSD de secours.
 │       ├── status_check.py       check_deposit_status : 1 appel GET /v2/deposits/{id} à la demande.
@@ -201,8 +206,9 @@ ai_browser2/
 │       │                               app_ledger/platform_ledger (trigger), vues *_by_aggregator,
 │       │                               reserve_payout contrôle le solde chez l'agrégateur du payout.
 │       ├── 025_transaction_callback_url.sql / 026_app_payout_reserve.sql (cf. en-têtes).
-│       └── 027_ledger_fee_details.sql  app_ledger : détail figé du calcul (brut, réseau,
-│                                       frais dépôt/retrait/commission + pourcentages).
+│       ├── 027_ledger_fee_details.sql  app_ledger : détail figé du calcul (brut, réseau,
+│       │                               frais dépôt/retrait/commission + pourcentages).
+│       └── 028_pawapay_statements.sql  pawapay_statement_lines (relevés) + pawapay_statement_syncs.
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── fly.toml                      Déploiement Fly.io : machine toujours allumée (auto_stop off).
