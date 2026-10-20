@@ -47,8 +47,10 @@ class LedgerMixin:
     async def credit_app(
         self, app_id: int, amount: int, *, transaction_id: int | None = None,
         currency: str = "XAF", reason: str = "", aggregator: str | None = None,
+        details: dict | None = None,
     ) -> None:
         """Crédite le solde d'une app (payin réussi ou remboursement payout).
+        `details` : détail figé du calcul (colonnes de la migration 027).
 
         IDEMPOTENT : la contrainte unique (transaction_id, direction) empêche un
         double crédit si polling ET webhook settlent le même payin. No-op si BD
@@ -61,6 +63,7 @@ class LedgerMixin:
             "app_id": app_id, "direction": "credit", "amount": int(amount),
             "currency": currency, "transaction_id": transaction_id, "reason": reason,
             **({"aggregator": aggregator} if aggregator else {}),
+            **(details or {}),
         })
 
     async def credit_app_manual(self, app_id: int, amount: int, *, aggregator: str,

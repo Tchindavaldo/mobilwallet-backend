@@ -34,7 +34,16 @@ async def credit_payin(app_id: int | None, tx_id: int | None, amount: int,
              b.app_amount, b.platform_amount)
     if b.provider_fee:
         await db.set_provider_fee(tx_id, b.provider_fee)
-    await db.credit_app(app_id, b.app_amount, transaction_id=tx_id, reason="payin_successful")
+    await db.credit_app(app_id, b.app_amount, transaction_id=tx_id, reason="payin_successful",
+                        aggregator=aggregator or None, details={
+                            "network": fee_network(network) or None, "operation": "deposit",
+                            "gross": b.gross, "fee_payer": fee_payer(agg_config),
+                            "deposit_fee": b.provider_fee, "deposit_fee_rate": rate,
+                            "payout_fee_reserve": b.payout_fee_reserve,
+                            "payout_fee_rate": payout_rate if b.payout_fee_reserve else None,
+                            "mw_commission": b.mw_commission,
+                            "mw_commission_type": b.mw_commission_type,
+                            "mw_commission_rate": b.mw_commission_rate})
     if b.payout_fee_reserve:
         await db.credit_app_reserve(app_id, b.payout_fee_reserve, transaction_id=tx_id,
                                     aggregator=aggregator, network=fee_network(network))
@@ -70,8 +79,17 @@ async def reserve_app_payout(app_id: int, aggregator: str, network: str, amount:
     venus d'un autre réseau) arrondi à l'excès sur le solde."""
     charges = await payout_charges(aggregator, network, amount)
     rates = await payout_rates(aggregator) if charges["app_pays"] else {}
-    return await db.reserve_payout_with_fee(app_id, aggregator, amount, fee_network(network),
-                                            rates, tx_id, currency, dry_run)
+    res = await db.reserve_payout_with_fee(app_id, aggregator, amount, fee_network(network),
+                                           rates, tx_id, currency, dry_run)
+    if not dry_run and tx_id and res and res.get("ok"):
+        agg_config = await db.get_aggregator_config(aggregator) if aggregator else None
+        await db.set_ledger_details(tx_id, "debit", {
+            "network": fee_network(network) or None, "operation": "payout",
+            "gross": amount, "fee_payer": fee_payer(agg_config),
+            "payout_fee": charges["provider_fee"],
+            "payout_fee_from_reserve": res.get("fee_from_reserve"),
+            "payout_fee_rate": await _rate(aggregator, network, "payout")})
+    return res
 
 
 async def refund_payout(row: dict) -> None:

@@ -46,7 +46,7 @@ ai_browser2/
 │       ├── browser_flow.py     #   mode navigateur (objectif IA, watch USSD, verdict)
 │       ├── replay_flow.py      #   façade mode curl replay (ré-exporte replay/)
 │       └── replay/             #   interpret, config, steps, cli du mode replay
-├── schema/supabase.sql         # tables transactions + curl_templates
+├── schema/supabase.sql         # tables transactions + curl_templates (renommée digikuntz_curl_templates, migration 029)
 ├── .env.example                # clés de configuration
 └── requirements.txt
 ```
@@ -137,6 +137,9 @@ FastAPI génère automatiquement la doc OpenAPI :
 |---|---|---|
 | POST | `/admin/apps/{id}/payout` | virement pour une app (débité de SON solde) |
 | GET | `/admin/apps/{id}/balance` | solde d'une app |
+| POST | `/admin/pawapay/statements/sync?start_date=&end_date=` | télécharge le relevé pawaPay (tranches de 31 j) et stocke les lignes nouvelles ; sans dates : depuis la dernière synchro. Auto selon `PAWAPAY_STATEMENT_SYNC` (day/week/month, défaut week) |
+| GET | `/admin/pawapay/statements?page=&limit=&start_date=&end_date=&msisdn=` | lignes de relevé stockées, paginées (argent réellement bougé ; pas les échecs) |
+| GET | `/admin/apps/{id}/ledger?page=&limit=&aggregator=&start_date=&end_date=` | grand livre détaillé de l'app, paginé : brut, réseau, frais de dépôt / retrait / commission (XAF + pourcentage figé) |
 | POST | `/admin/ledger/backfill` | amorcer les soldes depuis les payins réussis |
 | GET | `/admin/digikuntz/balance` | solde réel du compte global DigiKUNTZ |
 | GET | `/admin/pawapay/balance` | soldes réels des wallets pawaPay |
@@ -261,7 +264,7 @@ Créer les tables via `schema/supabase.sql` puis renseigner `SUPABASE_URL`/`SUPA
 - `transactions` — audit d'une tentative. Insérée en **`pending`** dès le départ, puis
   **mise à jour** (`status`/`success`/`message`) au verdict final. Un paiement ne peut pas
   être lancé sur un numéro qui a déjà une transaction `pending` (→ **409 `pending_exists`**).
-- `curl_templates` — templates de replay **versionnés par agrégateur** (jamais mélangés).
+- `<agrégateur>_curl_templates` (ex. `digikuntz_curl_templates`) — templates de replay versionnés, une table par agrégateur.
   Le mode browser **ajoute** une nouvelle version **uniquement si la recette a changé**
   (sinon rien) ; la précédente est désactivée mais **conservée en historique**. Exactement
   une ligne `is_active=true` par agrégateur — c'est celle que le mode replay recharge.

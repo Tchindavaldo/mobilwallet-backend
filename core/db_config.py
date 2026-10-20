@@ -1,5 +1,5 @@
 """Persistance configuration — mixin de `Database` (core/db.py) : réglages
-à chaud (table settings, max_tabs) et templates curl de replay (curl_templates).
+à chaud (table settings, max_tabs) et templates curl de replay (`<agrégateur>_curl_templates`).
 
 Hérité par `Database` ; utilise `self.enabled`, `self._client`, `self._run`.
 """
@@ -67,6 +67,12 @@ class ConfigMixin:
         return await self.set_setting("max_tabs_per_browser", str(int(value)))
 
     # --- curl templates (deduced by browser mode, reused by replay mode) ---
+    # Une table PAR agrégateur, préfixée par son nom (règle CLAUDE.md) :
+    # `<agrégateur>_curl_templates` (ex. digikuntz_curl_templates).
+    @staticmethod
+    def _tpl_table(aggregator: str) -> str:
+        return f"{aggregator}_curl_templates"
+
     async def save_template(
         self, aggregator: str, template: CurlTemplate, force: bool = False
     ) -> dict | None:
@@ -86,7 +92,7 @@ class ConfigMixin:
             client = self._client
             # Current active template for this aggregator (if any).
             cur = (
-                client.table("curl_templates")
+                client.table(self._tpl_table(aggregator))
                 .select("id, template")
                 .eq("aggregator", aggregator)
                 .eq("is_active", True)
@@ -99,11 +105,11 @@ class ConfigMixin:
             # Le nouveau template est 'untested' tant qu'un replay ne l'a pas
             # validé (status posé ensuite par mark_template_status).
             if cur.data:
-                client.table("curl_templates").update({"is_active": False}).eq(
+                client.table(self._tpl_table(aggregator)).update({"is_active": False}).eq(
                     "id", cur.data[0]["id"]
                 ).execute()
             res = (
-                client.table("curl_templates")
+                client.table(self._tpl_table(aggregator))
                 .insert({"aggregator": aggregator, "template": payload,
                          "is_active": True, "status": "untested"})
                 .execute()
@@ -112,7 +118,7 @@ class ConfigMixin:
 
         return await self._run(_save_if_changed)
 
-    async def mark_template_status(self, template_id: int, status: str) -> None:
+    async def mark_template_status(self, aggregator: str, template_id: int, status: str) -> None:
         """Marque la fiabilité d'un template ('working' | 'failed' | 'untested').
 
         Appelé par le replay : 'working' si le rejeu a abouti, 'failed' si le
@@ -123,7 +129,7 @@ class ConfigMixin:
             return
 
         def _update():
-            self._client.table("curl_templates").update(
+            self._client.table(self._tpl_table(aggregator)).update(
                 {"status": status}
             ).eq("id", template_id).execute()
 
@@ -147,7 +153,7 @@ class ConfigMixin:
             # On ne s'appuie plus sur is_active : on classe par fiabilité puis
             # récence, en excluant les 'failed'.
             res = (
-                self._client.table("curl_templates")
+                self._client.table(self._tpl_table(aggregator))
                 .select("id, template, status")
                 .eq("aggregator", aggregator)
                 .neq("status", "failed")

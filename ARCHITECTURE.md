@@ -30,10 +30,12 @@ ai_browser2/
 ├── core/                         === MOTEUR GÉNÉRIQUE (agnostique de l'agrégateur) ===
 │   ├── server.py                 ASSEMBLAGE FastAPI seulement : crée l'app, lifespan (pool
 │   │                             navigateur + LLM dans runtime), monte les routers. Pas de logique.
+│   ├── background_jobs.py        Démarre au lancement `aggregators.<nom>.background.start()` s'il existe.
 │   ├── runtime.py                État partagé entre routers (browser/llm vivants) + helpers
 │   │                             transverses (seconds_since, fmt_duration).
 │   ├── routers/                  UN APIRouter PAR DOMAINE (logique des endpoints) :
 │   │   ├── availability.py       GET /availability (état des opérateurs), GET /availability/status-page (page de statut de l'agrégateur), GET /pay/minimum (min/max d'un dépôt) + POST /operators/predict.
+│   │   ├── admin_statements.py   POST /admin/{agg}/statements/sync + GET /admin/{agg}/statements (paginé).
 │   │   ├── payout_ops.py         POST /payout/bulk (≤20, un appel agrégateur) + POST /payout/{ref}/cancel.
 │   │   ├── payment_page.py       POST /pay/page : page de paiement hébergée -> redirect_url.
 │   │   ├── system.py             /health, /aggregators, /config/max-tabs.
@@ -93,6 +95,8 @@ ai_browser2/
 │   │                             platform_ledger (credit_platform/debit_platform/get_platform_balance),
 │   │                             aggregators (get/list/upsert_aggregator_config),
 │   │                             payouts (insert_pending_payout/last_payout_for_account/update_payout).
+│   ├── db_ledger_details.py      LedgerDetailsMixin : détail figé du calcul sur app_ledger (réseau, brut,
+│   │                             frais dépôt/retrait/commission + pourcentages, migration 027) + lecture paginée.
 │   ├── fees.py                   Calcul PUR de ventilation (compute_fees / fees_info / fee_payer) :
 │   │                             brut → frais agrégateur (selon fee_payer) → commission MW → app + plateforme.
 │   ├── aggregator_ops.py         Accès neutre aux opérations optionnelles (aggregators.<nom>.operations).
@@ -153,6 +157,9 @@ ai_browser2/
 │   └── pawapay/                  Agrégateur « API directe » (Merchant API v2, Bearer token) :
 │       ├── operations.py         predict-provider, resend-callback, fail-enqueued, payouts/bulk, paymentpage.
 │       ├── availability.py       GET /v2/availability (cache 60 s) -> état par réseau/opération, NOT_ENABLED si non activé sur le compte, CLOSED si incident sur la page de statut (ou résolu depuis < 1 h).
+│       ├── statements.py         Relevés (POST /v2/statements -> CSV) stockés dans pawapay_statement_lines,
+│       │                         synchro auto (PAWAPAY_STATEMENT_SYNC day|week|month, recouvrement 2 j).
+│       ├── background.py         Tâches de fond pawaPay (synchro des relevés), lancées par core/background_jobs.
 │       ├── status_page.py        status.pawapay.io (API publique, cache 60 s) : incidents ouverts + résolus depuis < 1 h (COOLDOWN_S) pour /availability + état brut pour /availability/status-page.
 │       ├── account_conf.py       GET /v2/active-conf (cache 10 min) : opérations activées sur le compte, min/max, code USSD de secours.
 │       ├── status_check.py       check_deposit_status : 1 appel GET /v2/deposits/{id} à la demande.
@@ -167,7 +174,7 @@ ai_browser2/
 │       └── payout_flow.py        Payout pawaPay, même interface que digikuntz.payout_flow.
 │
 ├── schema/
-│   ├── supabase.sql              Schéma de base : transactions, curl_templates.
+│   ├── supabase.sql              Schéma de base : transactions, curl_templates (-> digikuntz_curl_templates, 029).
 │   └── migrations/               Évolutions idempotentes, une par fichier :
 │       ├── 001_transaction_traces.sql   Trace tour-par-tour de l'IA.
 │       ├── 002_app_settings.sql         Réglages clé/valeur (ex. max_tabs_per_browser).
@@ -195,9 +202,14 @@ ai_browser2/
 │       ├── 022_aggregator_pawapay.sql  Ligne 'pawapay' (commission MW à 0, à ajuster).
 │       ├── 023_aggregator_fee_payer.sql aggregators.fee_payer, table aggregator_fee_rates
 │       │                               (taux par réseau/opération), transactions.provider_fee.
-│       └── 024_ledger_by_aggregator.sql Soldes par agrégateur : colonne aggregator sur
-│                                       app_ledger/platform_ledger (trigger), vues *_by_aggregator,
-│                                       reserve_payout contrôle le solde chez l'agrégateur du payout.
+│       ├── 024_ledger_by_aggregator.sql Soldes par agrégateur : colonne aggregator sur
+│       │                               app_ledger/platform_ledger (trigger), vues *_by_aggregator,
+│       │                               reserve_payout contrôle le solde chez l'agrégateur du payout.
+│       ├── 025_transaction_callback_url.sql / 026_app_payout_reserve.sql (cf. en-têtes).
+│       ├── 027_ledger_fee_details.sql  app_ledger : détail figé du calcul (brut, réseau,
+│       │                               frais dépôt/retrait/commission + pourcentages).
+│       ├── 028_pawapay_statements.sql  pawapay_statement_lines (relevés) + pawapay_statement_syncs.
+│       └── 029_digikuntz_curl_templates.sql  curl_templates renommée digikuntz_curl_templates.
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── fly.toml                      Déploiement Fly.io : machine toujours allumée (auto_stop off).

@@ -20,13 +20,13 @@ from fastapi import FastAPI
 # Importer le package aggregators enregistre tous les agrégateurs dans le registre.
 import aggregators.digikuntz  # noqa: F401
 import aggregators.pawapay  # noqa: F401
-from core import openapi_docs, runtime
+from core import background_jobs, openapi_docs, runtime
 from core.browser import BrowserController
 from core.config import settings
 from core.db import db
 from core.llm_client import LlmClient, LlmConfig
 from core.routers import (
-    admin, auth, availability, dev, payment_page, payments, payout, payout_ops, projects,
+    admin, admin_statements, auth, availability, dev, payment_page, payments, payout, payout_ops, projects,
     system, templates, transactions,
     webhooks,
 )
@@ -87,6 +87,7 @@ async def lifespan(app: FastAPI):
     ))
 
     await _resume_unsettled()
+    background_jobs.start_all()
 
     log.info("AI Browser 2 ready! Browser=%s, Model=%s",
              "headless" if headless else "visible",
@@ -108,6 +109,7 @@ app = FastAPI(
 
 # Montage des routers par domaine.
 app.include_router(system.router)
+app.include_router(admin_statements.router)
 app.include_router(webhooks.router)
 app.include_router(auth.router)
 app.include_router(projects.router)

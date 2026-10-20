@@ -65,6 +65,10 @@ Rien de commun ne doit porter le nom ou la logique d'un prestataire :
   messages, appels HTTP) vit **dans `aggregators/<nom>/`**, jamais dans `core/`.
 - Avant d'ajouter un champ/une colonne commune, vérifier qu'il a un sens pour
   TOUS les agrégateurs ; sinon il reste dans le dossier de l'agrégateur.
+- **Tables propres à un agrégateur : préfixées par son nom** (`pawapay_*`,
+  `digikuntz_*`, et `<nom>_*` pour tout nouvel agrégateur). Ex.
+  `pawapay_statement_lines`. Une table sans préfixe = commune à tous. Son accès
+  vit dans `aggregators/<nom>/`, jamais dans `core/`.
 
 ### Objectif : une arborescence lisible d'un coup d'œil
 

@@ -56,6 +56,8 @@ class PawapayConfig:
     api_token: str = field(default_factory=lambda: _env("PAWAPAY_API_TOKEN"))
     country: str = field(default_factory=lambda: _env("PAWAPAY_COUNTRY", "CMR"))
     currency: str = field(default_factory=lambda: _env("PAWAPAY_CURRENCY", "XAF"))
+    # Synchro auto des relevés (pawapay_statement_lines) : day | week | month.
+    statement_sync: str = field(default_factory=lambda: _env("PAWAPAY_STATEMENT_SYNC", "week"))
 
 
 @dataclass
