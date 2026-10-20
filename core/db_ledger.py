@@ -57,7 +57,10 @@ class LedgerMixin:
         désactivée, app_id/amount manquant, ou (pour l'idempotence) transaction_id
         absent — on n'écrit JAMAIS un credit non rattaché à une transaction.
         """
-        if not self.enabled or app_id is None or not amount or transaction_id is None:
+        # Un crédit à 0 n'est écrit que s'il porte le détail du calcul (payin
+        # entièrement absorbé par les frais : il reste visible dans l'historique).
+        if (not self.enabled or app_id is None or transaction_id is None
+                or amount is None or amount < 0 or (not amount and not details)):
             return
         await self._insert_ledger_row("app_ledger", {
             "app_id": app_id, "direction": "credit", "amount": int(amount),
