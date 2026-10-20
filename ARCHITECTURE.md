@@ -211,8 +211,10 @@ ai_browser2/
 │       ├── 025_transaction_callback_url.sql / 026_app_payout_reserve.sql (cf. en-têtes).
 │       ├── 027_ledger_fee_details.sql  app_ledger : détail figé du calcul (brut, réseau,
 │       │                               frais dépôt/retrait/commission + pourcentages).
-│       ├── 028_pawapay_statements.sql  pawapay_statement_lines (relevés) + pawapay_statement_syncs.
-│       └── 029_digikuntz_curl_templates.sql  curl_templates renommée digikuntz_curl_templates.
+│       ├── 028_pawapay_statements.sql  pawapay_statement_syncs (journal des synchros).
+│       ├── 029_digikuntz_curl_templates.sql  curl_templates renommée digikuntz_curl_templates.
+│       └── 030_pawapay_statement_transactions.sql  relevé pawaPay : 1 ligne par transaction,
+│                                       frais pawaPay et frais opérateur en colonnes.
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── fly.toml                      Déploiement Fly.io : machine toujours allumée (auto_stop off).

@@ -1,4 +1,4 @@
--- 028 : relevés pawaPay (POST /v2/statements) stockés chez nous = notre trace
+-- 028 (table des lignes remplacée par 030, une ligne par transaction) : relevés pawaPay (POST /v2/statements) stockés chez nous = notre trace
 -- de l'argent réellement encaissé/décaissé sur le wallet pawaPay.
 -- Préfixe `pawapay_` : table propre à l'agrégateur (règle CLAUDE.md).
 -- Une ligne CSV = un mouvement (montant, frais pawaPay, frais opérateur...).
