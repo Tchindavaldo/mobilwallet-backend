@@ -174,7 +174,7 @@ ai_browser2/
 │       └── payout_flow.py        Payout pawaPay, même interface que digikuntz.payout_flow.
 │
 ├── schema/
-│   ├── supabase.sql              Schéma de base : transactions, curl_templates.
+│   ├── supabase.sql              Schéma de base : transactions, curl_templates (-> digikuntz_curl_templates, 029).
 │   └── migrations/               Évolutions idempotentes, une par fichier :
 │       ├── 001_transaction_traces.sql   Trace tour-par-tour de l'IA.
 │       ├── 002_app_settings.sql         Réglages clé/valeur (ex. max_tabs_per_browser).
@@ -208,7 +208,8 @@ ai_browser2/
 │       ├── 025_transaction_callback_url.sql / 026_app_payout_reserve.sql (cf. en-têtes).
 │       ├── 027_ledger_fee_details.sql  app_ledger : détail figé du calcul (brut, réseau,
 │       │                               frais dépôt/retrait/commission + pourcentages).
-│       └── 028_pawapay_statements.sql  pawapay_statement_lines (relevés) + pawapay_statement_syncs.
+│       ├── 028_pawapay_statements.sql  pawapay_statement_lines (relevés) + pawapay_statement_syncs.
+│       └── 029_digikuntz_curl_templates.sql  curl_templates renommée digikuntz_curl_templates.
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── fly.toml                      Déploiement Fly.io : machine toujours allumée (auto_stop off).

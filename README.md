@@ -46,7 +46,7 @@ ai_browser2/
 │       ├── browser_flow.py     #   mode navigateur (objectif IA, watch USSD, verdict)
 │       ├── replay_flow.py      #   façade mode curl replay (ré-exporte replay/)
 │       └── replay/             #   interpret, config, steps, cli du mode replay
-├── schema/supabase.sql         # tables transactions + curl_templates
+├── schema/supabase.sql         # tables transactions + curl_templates (renommée digikuntz_curl_templates, migration 029)
 ├── .env.example                # clés de configuration
 └── requirements.txt
 ```
@@ -264,7 +264,7 @@ Créer les tables via `schema/supabase.sql` puis renseigner `SUPABASE_URL`/`SUPA
 - `transactions` — audit d'une tentative. Insérée en **`pending`** dès le départ, puis
   **mise à jour** (`status`/`success`/`message`) au verdict final. Un paiement ne peut pas
   être lancé sur un numéro qui a déjà une transaction `pending` (→ **409 `pending_exists`**).
-- `curl_templates` — templates de replay **versionnés par agrégateur** (jamais mélangés).
+- `<agrégateur>_curl_templates` (ex. `digikuntz_curl_templates`) — templates de replay versionnés, une table par agrégateur.
   Le mode browser **ajoute** une nouvelle version **uniquement si la recette a changé**
   (sinon rien) ; la précédente est désactivée mais **conservée en historique**. Exactement
   une ligne `is_active=true` par agrégateur — c'est celle que le mode replay recharge.

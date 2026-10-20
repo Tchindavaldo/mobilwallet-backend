@@ -8,7 +8,7 @@ Tables (see schema/supabase.sql):
   - transactions(id, aggregator, mode, amount, phone, network, email,
       transaction_ref, status, message, success, charge_response, error_signals,
       created_at)
-  - curl_templates(id, aggregator, template jsonb, created_at, updated_at)
+  - <agrégateur>_curl_templates(id, aggregator, template jsonb, created_at, updated_at)
   - app_ledger(id, app_id, direction, amount, transaction_id, reason, created_at)
       + vue app_balance — comptabilité par app (cf. core/db_ledger.py).
 

@@ -120,7 +120,7 @@ class DigikuntzAggregator(Aggregator):
             return
         log.info("[REPLAY] template id=%s marqué '%s'%s",
                  db_id, status, f" ({reason})" if reason else "")
-        await self.db.mark_template_status(db_id, status)
+        await self.db.mark_template_status(self.name, db_id, status)
 
     # --- replay mode (no browser) ---
     async def replay(self, req: PaymentRequest, template: CurlTemplate) -> PaymentResult:
