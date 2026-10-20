@@ -14,6 +14,7 @@ Tables (see schema/supabase.sql):
 
 Mixins hérités par Database (un fichier par domaine, sous le plafond de taille) :
   - core/db_ledger.py      : comptabilité par app/agrégateur, payouts ;
+  - core/db_ledger_details.py : détail figé des lignes de ledger + lecture paginée ;
   - core/db_diagnostics.py : erreurs détectées et traces IA ;
   - core/db_config.py      : réglages à chaud et templates curl.
 """
@@ -26,12 +27,13 @@ from core.config import settings
 from core.db_config import ConfigMixin
 from core.db_diagnostics import DiagnosticsMixin
 from core.db_ledger import LedgerMixin
+from core.db_ledger_details import LedgerDetailsMixin
 from core.db_reserve import ReserveMixin
 
 log = logging.getLogger("ai_browser2")
 
 
-class Database(LedgerMixin, ReserveMixin, DiagnosticsMixin, ConfigMixin):
+class Database(LedgerMixin, LedgerDetailsMixin, ReserveMixin, DiagnosticsMixin, ConfigMixin):
     def __init__(self) -> None:
         self._client = None
         if settings.supabase_url and settings.supabase_key:

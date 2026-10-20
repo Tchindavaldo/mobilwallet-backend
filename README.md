@@ -137,6 +137,7 @@ FastAPI génère automatiquement la doc OpenAPI :
 |---|---|---|
 | POST | `/admin/apps/{id}/payout` | virement pour une app (débité de SON solde) |
 | GET | `/admin/apps/{id}/balance` | solde d'une app |
+| GET | `/admin/apps/{id}/ledger?page=&limit=&aggregator=&start_date=&end_date=` | grand livre détaillé de l'app, paginé : brut, réseau, frais de dépôt / retrait / commission (XAF + pourcentage figé) |
 | POST | `/admin/ledger/backfill` | amorcer les soldes depuis les payins réussis |
 | GET | `/admin/digikuntz/balance` | solde réel du compte global DigiKUNTZ |
 | GET | `/admin/pawapay/balance` | soldes réels des wallets pawaPay |

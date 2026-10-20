@@ -2225,6 +2225,133 @@
         }
       }
     },
+    "/admin/apps/{app_id}/ledger": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Grand livre détaillé d'une app (paginé)",
+        "description": "Chaque mouvement du solde de l'app, plus récent d'abord, avec le détail\nfigé du calcul : réseau, opération, brut, frais de dépôt / retrait /\ncommission MobileWallet (montant XAF + pourcentage appliqué à ce moment-là).",
+        "operationId": "admin_app_ledger_admin_apps__app_id__ledger_get",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "aggregator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Aggregator"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "YYYY-MM-DD",
+              "title": "Start Date"
+            },
+            "description": "YYYY-MM-DD"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "YYYY-MM-DD",
+              "title": "End Date"
+            },
+            "description": "YYYY-MM-DD"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "X-Admin-Key invalide ou manquant."
+          },
+          "503": {
+            "description": "Supabase non configuré."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/apps/{app_id}/credit": {
       "post": {
         "tags": [

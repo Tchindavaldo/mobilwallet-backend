@@ -220,6 +220,20 @@ async def admin_app_balance(app_id: int):
             "currency": "XAF"}
 
 
+@router.get("/apps/{app_id}/ledger", summary="Grand livre détaillé d'une app (paginé)")
+async def admin_app_ledger(app_id: int, page: int = Query(1, ge=1),
+                           limit: int = Query(20, ge=1, le=100),
+                           aggregator: str | None = Query(None),
+                           start_date: str | None = Query(None, description="YYYY-MM-DD"),
+                           end_date: str | None = Query(None, description="YYYY-MM-DD")):
+    """Chaque mouvement du solde de l'app, plus récent d'abord, avec le détail
+    figé du calcul : réseau, opération, brut, frais de dépôt / retrait /
+    commission MobileWallet (montant XAF + pourcentage appliqué à ce moment-là)."""
+    return _require_db(await db.list_app_ledger(app_id, page=page, limit=limit,
+                                                aggregator=aggregator,
+                                                start_date=start_date, end_date=end_date))
+
+
 @router.post("/apps/{app_id}/credit", summary="Créditer manuellement le solde d'une app")
 async def admin_app_credit(app_id: int, body: PlatformCredit):
     """Crédit MANUEL du solde d'une app (ajustement admin, sans payin rattaché).

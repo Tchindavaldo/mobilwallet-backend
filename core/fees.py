@@ -39,6 +39,8 @@ class FeeBreakdown:
     mw_commission: int    # commission MobileWallet
     app_amount: int       # crédité à l'app
     platform_amount: int  # crédité à la plateforme MW (négatif si elle supporte les frais)
+    mw_commission_type: str = "flat"    # percent | flat
+    mw_commission_rate: float = 0.0     # pourcentage (percent) ou montant fixe (flat)
 
 
 FEE_PAYERS = ("customer", "app", "platform")
@@ -137,6 +139,8 @@ def compute_fees(
         mw_commission=mw_commission,
         app_amount=app_amount,
         platform_amount=platform_amount,
+        mw_commission_type=comm_type,
+        mw_commission_rate=comm_value,
     )
 
 

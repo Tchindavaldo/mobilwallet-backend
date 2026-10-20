@@ -93,6 +93,8 @@ ai_browser2/
 │   │                             platform_ledger (credit_platform/debit_platform/get_platform_balance),
 │   │                             aggregators (get/list/upsert_aggregator_config),
 │   │                             payouts (insert_pending_payout/last_payout_for_account/update_payout).
+│   ├── db_ledger_details.py      LedgerDetailsMixin : détail figé du calcul sur app_ledger (réseau, brut,
+│   │                             frais dépôt/retrait/commission + pourcentages, migration 027) + lecture paginée.
 │   ├── fees.py                   Calcul PUR de ventilation (compute_fees / fees_info / fee_payer) :
 │   │                             brut → frais agrégateur (selon fee_payer) → commission MW → app + plateforme.
 │   ├── aggregator_ops.py         Accès neutre aux opérations optionnelles (aggregators.<nom>.operations).
@@ -195,9 +197,12 @@ ai_browser2/
 │       ├── 022_aggregator_pawapay.sql  Ligne 'pawapay' (commission MW à 0, à ajuster).
 │       ├── 023_aggregator_fee_payer.sql aggregators.fee_payer, table aggregator_fee_rates
 │       │                               (taux par réseau/opération), transactions.provider_fee.
-│       └── 024_ledger_by_aggregator.sql Soldes par agrégateur : colonne aggregator sur
-│                                       app_ledger/platform_ledger (trigger), vues *_by_aggregator,
-│                                       reserve_payout contrôle le solde chez l'agrégateur du payout.
+│       ├── 024_ledger_by_aggregator.sql Soldes par agrégateur : colonne aggregator sur
+│       │                               app_ledger/platform_ledger (trigger), vues *_by_aggregator,
+│       │                               reserve_payout contrôle le solde chez l'agrégateur du payout.
+│       ├── 025_transaction_callback_url.sql / 026_app_payout_reserve.sql (cf. en-têtes).
+│       └── 027_ledger_fee_details.sql  app_ledger : détail figé du calcul (brut, réseau,
+│                                       frais dépôt/retrait/commission + pourcentages).
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── fly.toml                      Déploiement Fly.io : machine toujours allumée (auto_stop off).
