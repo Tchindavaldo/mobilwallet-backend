@@ -22,8 +22,7 @@ async def operators_availability(aggregator: str = Query("pawapay"),
                                  ctx: AuthContext = Depends(require_api_key)):
     """Statut par opérateur et par opération (deposit, payout, refund) :
     OPERATIONAL (normal), DELAYED (payouts/refunds mis en file : acceptés,
-    exécutés plus tard), CLOSED (refusé : utilisez l'autre réseau ; aussi quand l'agrégateur a
-    déclaré un incident, détail dans `incidents`).
+    exécutés plus tard), CLOSED (refusé : utilisez l'autre réseau).
     Liste vide si l'agrégateur ne publie pas cette information."""
     if aggregator not in registry.names():
         raise HTTPException(404, {"error": "unknown_aggregator",
@@ -46,8 +45,8 @@ async def operators_status_page(aggregator: str = Query("pawapay"),
     """Ce que l'agrégateur publie sur sa page de statut publique, pour votre
     pays : état de chaque réseau et opération (`operational`,
     `degraded_performance`, `partial_outage`, `major_outage`) et incidents non
-    résolus avec leur dernier message. `/availability` en tient déjà compte
-    (incident ouvert -> CLOSED). Vide si l'agrégateur n'a pas de page de statut."""
+    résolus avec leur dernier message. Informatif : ne bloque aucun paiement
+    (seul `/availability` fait foi). Vide si l'agrégateur n'a pas de page de statut."""
     if aggregator not in registry.names():
         raise HTTPException(404, {"error": "unknown_aggregator",
                                   "supported_aggregators": registry.names()})

@@ -1596,7 +1596,7 @@
           "availability"
         ],
         "summary": "Disponibilité des opérateurs",
-        "description": "Statut par opérateur et par opération (deposit, payout, refund) :\nOPERATIONAL (normal), DELAYED (payouts/refunds mis en file : acceptés,\nexécutés plus tard), CLOSED (refusé : utilisez l'autre réseau ; aussi quand l'agrégateur a\ndéclaré un incident, détail dans `incidents`).\nListe vide si l'agrégateur ne publie pas cette information.",
+        "description": "Statut par opérateur et par opération (deposit, payout, refund) :\nOPERATIONAL (normal), DELAYED (payouts/refunds mis en file : acceptés,\nexécutés plus tard), CLOSED (refusé : utilisez l'autre réseau).\nListe vide si l'agrégateur ne publie pas cette information.",
         "operationId": "operators_availability_availability_get",
         "security": [
           {
@@ -1649,7 +1649,7 @@
           "availability"
         ],
         "summary": "Page de statut de l'agrégateur",
-        "description": "Ce que l'agrégateur publie sur sa page de statut publique, pour votre\npays : état de chaque réseau et opération (`operational`,\n`degraded_performance`, `partial_outage`, `major_outage`) et incidents non\nrésolus avec leur dernier message. `/availability` en tient déjà compte\n(incident ouvert -> CLOSED). Vide si l'agrégateur n'a pas de page de statut.",
+        "description": "Ce que l'agrégateur publie sur sa page de statut publique, pour votre\npays : état de chaque réseau et opération (`operational`,\n`degraded_performance`, `partial_outage`, `major_outage`) et incidents non\nrésolus avec leur dernier message. Informatif : ne bloque aucun paiement\n(seul `/availability` fait foi). Vide si l'agrégateur n'a pas de page de statut.",
         "operationId": "operators_status_page_availability_status_page_get",
         "security": [
           {
