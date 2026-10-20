@@ -1,10 +1,11 @@
-"""Relevés pawaPay (POST /v2/statements) -> table `pawapay_statement_lines`.
+"""Relevés pawaPay (POST /v2/statements) -> table `pawapay_statement_transactions`.
 
 pawaPay ne liste pas les transactions : le relevé CSV du wallet est la seule
 source en masse (argent réellement bougé ; les échecs n'y figurent pas, ils
 restent dans `transactions`). Génération asynchrone : on la demande, on interroge
-GET /v2/statements/{id} jusqu'au `downloadUrl`, on télécharge le CSV et on
-insère les lignes nouvelles (idempotent, index unique).
+GET /v2/statements/{id} jusqu'au `downloadUrl`, on télécharge le CSV. Le CSV
+donne 3 lignes par opération (montant, frais pawaPay, frais opérateur) : on les
+regroupe en UNE ligne par transaction, chaque frais dans sa colonne (upsert).
 
 Synchro automatique (`schedule`) selon PAWAPAY_STATEMENT_SYNC (day|week|month,
 défaut week) : de la dernière fin couverte MOINS un recouvrement de 2 jours
@@ -27,7 +28,7 @@ from . import client
 log = logging.getLogger("ai_browser2")
 
 _pp = settings.pawapay
-_LINES = "pawapay_statement_lines"
+_TXS = "pawapay_statement_transactions"
 _SYNCS = "pawapay_statement_syncs"
 _MAX_SPAN = timedelta(days=31)
 _OVERLAP = timedelta(days=2)
@@ -64,33 +65,41 @@ async def _generate(start: datetime, end: datetime) -> dict:
 
 
 def _parse(text: str, statement_id: str) -> list[dict]:
-    rows = []
+    """Regroupe les lignes CSV par Transaction ID : la ligne principale donne
+    l'opération et le montant ; '... pawaPay fees' et '... pass through fees'
+    vont dans pawapay_fee / operator_fee. Solde = celui de la dernière ligne."""
+    txs: dict[str, dict] = {}
     for r in csv.DictReader(io.StringIO(text)):
-        if not r.get("Transaction ID"):
+        tid = r.get("Transaction ID")
+        if not tid:
             continue
-        rows.append({
+        kind = (r.get("Type") or "").strip()
+        amount = float(r.get("Amount") or 0)
+        t = txs.setdefault(tid, {
+            "provider_transaction_id": tid,
             "occurred_at": r["Creation date"] + ("" if "+" in r["Creation date"] else "+00:00"),
-            "msisdn": r.get("MSISDN") or None,
-            "provider_transaction_id": r["Transaction ID"],
-            "amount": r.get("Amount") or "0",
-            "mno": r.get("MNO") or None,
-            "line_type": r.get("Type") or "",
-            "balance": r.get("Balance") or None,
-            "reason": r.get("Reason") or None,
-            "metadata": r.get("Metadata") or None,
-            "country": _pp.country, "currency": _pp.currency,
-            "statement_id": statement_id,
+            "operation": "", "amount": 0.0, "pawapay_fee": 0.0, "operator_fee": 0.0,
+            "msisdn": r.get("MSISDN") or None, "mno": r.get("MNO") or None,
+            "reason": r.get("Reason") or None, "metadata": r.get("Metadata") or None,
+            "country": _pp.country, "currency": _pp.currency, "statement_id": statement_id,
         })
-    return rows
+        low = kind.lower()
+        if low.endswith("pawapay fees"):
+            t["pawapay_fee"] += amount
+        elif low.endswith("pass through fees"):
+            t["operator_fee"] += amount
+        else:
+            t["operation"], t["amount"] = kind, amount
+        t["balance_after"] = r.get("Balance") or None
+    return [t for t in txs.values() if t["operation"]]
 
 
 async def _store(rows: list[dict]) -> int:
-    """Insère les lignes absentes ; retourne le nombre de nouvelles lignes."""
+    """Upsert par transaction ; retourne le nombre de transactions écrites."""
     if not rows or not db.enabled:
         return 0
-    res = await db._run(lambda: db._client.table(_LINES).upsert(
-        rows, on_conflict="provider_transaction_id,line_type,occurred_at,amount",
-        ignore_duplicates=True).execute())
+    res = await db._run(lambda: db._client.table(_TXS).upsert(
+        rows, on_conflict="provider_transaction_id").execute())
     return len((res.data if res else []) or [])
 
 
@@ -145,12 +154,12 @@ async def sync_since_last() -> dict:
 
 async def list_lines(page: int = 1, limit: int = 20, start_date: str | None = None,
                      end_date: str | None = None, msisdn: str | None = None) -> dict | None:
-    """Lignes stockées, plus récentes d'abord, paginées."""
+    """Transactions du relevé, plus récentes d'abord, paginées."""
     if not db.enabled:
         return None
 
     def _q():
-        q = db._client.table(_LINES).select("*", count="exact")
+        q = db._client.table(_TXS).select("*", count="exact")
         if start_date:
             q = q.gte("occurred_at", start_date)
         if end_date:

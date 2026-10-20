@@ -138,7 +138,7 @@ FastAPI génère automatiquement la doc OpenAPI :
 | POST | `/admin/apps/{id}/payout` | virement pour une app (débité de SON solde) |
 | GET | `/admin/apps/{id}/balance` | solde d'une app |
 | POST | `/admin/pawapay/statements/sync?start_date=&end_date=` | télécharge le relevé pawaPay (tranches de 31 j) et stocke les lignes nouvelles ; sans dates : depuis la dernière synchro. Auto selon `PAWAPAY_STATEMENT_SYNC` (day/week/month, défaut week) |
-| GET | `/admin/pawapay/statements?page=&limit=&start_date=&end_date=&msisdn=` | lignes de relevé stockées, paginées (argent réellement bougé ; pas les échecs) |
+| GET | `/admin/pawapay/statements?page=&limit=&start_date=&end_date=&msisdn=` | relevé stocké, 1 ligne par transaction (montant, frais pawaPay, frais opérateur, solde après), paginé ; pas les échecs |
 | GET | `/admin/apps/{id}/ledger?page=&limit=&aggregator=&start_date=&end_date=` | grand livre détaillé de l'app, paginé : brut, réseau, frais de dépôt / retrait / commission (XAF + pourcentage figé) |
 | POST | `/admin/ledger/backfill` | amorcer les soldes depuis les payins réussis |
 | GET | `/admin/digikuntz/balance` | solde réel du compte global DigiKUNTZ |

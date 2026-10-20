@@ -157,7 +157,7 @@ ai_browser2/
 │   └── pawapay/                  Agrégateur « API directe » (Merchant API v2, Bearer token) :
 │       ├── operations.py         predict-provider, resend-callback, fail-enqueued, payouts/bulk, paymentpage.
 │       ├── availability.py       GET /v2/availability (cache 60 s) -> état par réseau/opération, NOT_ENABLED si non activé sur le compte, CLOSED si incident sur la page de statut (ou résolu depuis < 1 h).
-│       ├── statements.py         Relevés (POST /v2/statements -> CSV) stockés dans pawapay_statement_lines,
+│       ├── statements.py         Relevés (POST /v2/statements -> CSV) stockés dans pawapay_statement_transactions,
 │       │                         synchro auto (PAWAPAY_STATEMENT_SYNC day|week|month, recouvrement 2 j).
 │       ├── background.py         Tâches de fond pawaPay (synchro des relevés), lancées par core/background_jobs.
 │       ├── status_page.py        status.pawapay.io (API publique, cache 60 s) : incidents ouverts + résolus depuis < 1 h (COOLDOWN_S) pour /availability + état brut pour /availability/status-page.
@@ -208,7 +208,9 @@ ai_browser2/
 │       ├── 025_transaction_callback_url.sql / 026_app_payout_reserve.sql (cf. en-têtes).
 │       ├── 027_ledger_fee_details.sql  app_ledger : détail figé du calcul (brut, réseau,
 │       │                               frais dépôt/retrait/commission + pourcentages).
-│       └── 028_pawapay_statements.sql  pawapay_statement_lines (relevés) + pawapay_statement_syncs.
+│       ├── 028_pawapay_statements.sql  pawapay_statement_syncs (journal des synchros).
+│       └── 030_pawapay_statement_transactions.sql  relevé pawaPay : 1 ligne par transaction,
+│                                       frais pawaPay et frais opérateur en colonnes.
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── fly.toml                      Déploiement Fly.io : machine toujours allumée (auto_stop off).
