@@ -166,8 +166,7 @@ async def _prepare_payout(req: PayoutRequest, app_id: int, api_key_id: int | Non
         raise HTTPException(
             422,
             {"error": "insufficient_balance",
-             "message": (f"Solde insuffisant chez {req.aggregator} pour effectuer ce "
-                         f"virement (les soldes sont séparés par agrégateur)."),
+             "message": "Solde insuffisant pour effectuer ce virement.",
              "aggregator": req.aggregator,
              "balance": balance, "requested": needed,
              "fee": (reserved or {}).get("fee_from_balance", 0), "currency": req.currency},
