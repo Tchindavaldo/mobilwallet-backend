@@ -92,6 +92,22 @@ async def reserve_app_payout(app_id: int, aggregator: str, network: str, amount:
     return res
 
 
+async def max_payout_amount(app_id: int, aggregator: str, network: str,
+                            balance: int) -> int:
+    """Plus gros montant virable vers `network`, frais déjà déduits (ce que
+    l'app peut réellement retirer). Recherche dichotomique sur le devis exact
+    (`reserve_app_payout` en dry_run), les frais croissant avec le montant."""
+    lo, hi = 0, max(int(balance or 0), 0)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        q = await reserve_app_payout(app_id, aggregator, network, mid, None, dry_run=True)
+        if q and q.get("ok"):
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
+
+
 async def refund_payout(row: dict) -> None:
     """Rembourse un payout d'app échoué/annulé : on rend exactement ce qui a été
     débité (solde + réserves), ou les frais à la plateforme s'ils étaient à sa

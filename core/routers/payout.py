@@ -168,7 +168,9 @@ async def _prepare_payout(req: PayoutRequest, app_id: int, api_key_id: int | Non
             {"error": "insufficient_balance",
              "message": "Solde insuffisant pour effectuer ce virement.",
              "aggregator": req.aggregator,
-             "balance": balance, "requested": needed,
+             "balance": await settlement.max_payout_amount(
+                 app_id, req.aggregator, req.account_bank_code, balance),
+             "requested": needed,
              "fee": (reserved or {}).get("fee_from_balance", 0), "currency": req.currency},
         )
     balance_after = reserved.get("balance_after")
