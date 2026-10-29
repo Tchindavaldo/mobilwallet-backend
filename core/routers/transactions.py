@@ -30,10 +30,23 @@ async def list_transactions(limit: int = 50, ctx: AuthContext = Depends(require_
 
 @router.get("/balance", tags=["transactions"], summary="Solde de votre app")
 async def app_balance(ctx: AuthContext = Depends(require_api_key)):
-    """Solde logique de VOTRE app = somme de vos encaissements réussis − vos retraits.
+    """Solde de VOTRE app = encaissements réussis − retraits.
 
-    C'est le montant disponible pour un virement (`POST /payout`)."""
+    - `network` : solde par opérateur (tous agrégateurs), retirable SANS frais vers
+      ce même opérateur ; vers l'autre (interréseau), les frais du réseau de
+      destination sont pris en plus. C'est ce solde que débite `POST /payout`
+      (`source_network`).
+    - `aggregators` : le même détail par agrégateur.
+    - `balance` : total, à titre d'information."""
+    by_net = await db.balances_by_network(ctx.app_id)
+    total_net = {"mtn": 0, "orange": 0}
+    for nets in by_net.values():
+        for n, v in nets.items():
+            total_net[n] = total_net.get(n, 0) + v
     return {"balance": await db.get_app_balance(ctx.app_id),
+            "network": total_net,
+            "aggregators": {a: {"mtn": n.get("mtn", 0), "orange": n.get("orange", 0)}
+                            for a, n in by_net.items()},
             "by_aggregator": await db.balances_by_aggregator(ctx.app_id),
             "currency": "XAF"}
 

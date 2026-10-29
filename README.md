@@ -113,7 +113,7 @@ FastAPI génère automatiquement la doc OpenAPI :
 | POST | `/pay` | exécuter un paiement (encaissement) |
 | POST | `/payout` | effectuer un virement (retrait), débité du solde de l'app ; renvoie `fee` et `total_debited` |
 | GET | `/payout/quote` | devis : frais débités du solde (0 si couverts par la réserve du réseau), solde après |
-| GET | `/balance` | solde courant de votre app (XAF) |
+| GET | `/balance` | solde de votre app par opérateur (`network`: mtn/orange) + total (XAF) |
 | GET | `/availability?aggregator=pawapay` | état des opérateurs (OPERATIONAL / DELAYED / CLOSED / NOT_ENABLED = non activé sur le compte marchand, refus 400 `operation_not_enabled`). `/pay` et `/payout` renvoient 503 `operator_unavailable` si CLOSED ; payout DELAYED accepté (file d attente) |
 | GET | `/availability/status-page?aggregator=pawapay` | page de statut publique de l'agrégateur : état par réseau/opération + incidents non résolus, informatif : ne bloque pas les paiements (vide si l'agrégateur n'en a pas) |
 | GET | `/pay/minimum?aggregator=pawapay&network=MTN` | montant min/max d'un dépôt (réseau vide = page de paiement) ; en dessous, /pay et /pay/page répondent 422 `amount_too_low` |
@@ -222,12 +222,20 @@ tenons le **solde de chaque app** (grand livre `app_ledger`) :
 Un retrait **débite le solde de VOTRE app** (identifiée par la clé API). Invariant :
 `Σ soldes des apps + solde plateforme == solde réel du compte global DigiKUNTZ` — une
 app ne peut jamais retirer plus qu'elle n'a encaissé. Un virement supérieur au solde est
-**refusé (422)** avant tout appel amont. Le solde est réservé (débité) à
+**refusé (422)** avant tout appel amont ; la réponse donne le vrai solde (`balance`), les frais du virement demandé (`fee`) et le plus gros virement possible : `max_amount` (ce que le bénéficiaire recevra) + `max_fee` (frais pris en plus sur le solde). Le solde est réservé (débité) à
 l'initiation et **remboursé** si le virement échoue.
+
+**Soldes par opérateur.** Le solde de l'app est tenu par opérateur (`GET /balance` →
+`network: {"mtn": …, "orange": …}`, le total `balance` est donné à titre d'information).
+Chaque virement débite le solde opérateur choisi par `source_network` (obligatoire ;
+absent → `422 source_network_required` avec vos soldes, rien n'est débité) :
+- même réseau que `account_bank_code` : **sans frais** (prépayés au dépôt) ;
+- autre réseau (interréseau) : frais du réseau de destination pris en plus sur ce solde.
 
 ```jsonc
 {
   "amount": 5000,
+  "source_network": "MTN",             // solde opérateur débité
   "account_bank_code": "MTN",          // réseau / banque du bénéficiaire
   "account_number": "237691224472",
   "receiver_name": "John Doe",

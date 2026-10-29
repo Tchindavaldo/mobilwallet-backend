@@ -29,13 +29,14 @@ async def payout_quote(
     amount: int = Query(..., gt=0, description="Montant à virer (XAF)."),
     account_bank_code: str = Query(..., description="ORANGEMONEY | MTN"),
     aggregator: str = Query("digikuntz"),
+    source_network: str = Query(..., description="Solde opérateur débité : ORANGEMONEY | MTN"),
     ctx: AuthContext = Depends(require_api_key),
 ):
     """Ce que coûterait ce virement au solde de votre app. Vers le réseau de vos
     encaissements, les frais sont déjà prépayés (fee = 0) ; vers l'autre réseau,
     ils sont pris sur le solde au taux de ce réseau, arrondis au franc supérieur."""
     q = await settlement.reserve_app_payout(ctx.app_id, aggregator, account_bank_code,
-                                            amount, None, dry_run=True)
+                                            amount, None, dry_run=True, source=source_network)
     if q is None:
         raise HTTPException(503, {"error": "quote_unavailable",
                                   "message": "Devis indisponible, réessayez."})

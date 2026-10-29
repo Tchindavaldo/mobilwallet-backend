@@ -38,6 +38,13 @@ class PayoutRequest(BaseModel):
     narration: str = Field("", description="Motif / libellé du virement.",
                            examples=["Paiement fournisseur"])
     aggregator: str = Field("digikuntz", description="Nom de l'agrégateur (cf. GET /aggregators).")
+    source_network: str | None = Field(
+        None, description="Solde opérateur à débiter : 'MTN' ou 'ORANGEMONEY' (cf. GET "
+                          "/balance -> network). Même réseau que account_bank_code : sans "
+                          "frais ; autre réseau (interréseau) : frais du réseau de "
+                          "destination pris en plus. Absent : 422 `source_network_required` "
+                          "avec vos soldes, rien n'est débité.",
+        examples=["MTN"])
     callback_url: str = Field("", description="URL de callback (défaut: celle de l'app).")
     end_user_ref: str | None = Field(
         None,
@@ -49,7 +56,7 @@ class PayoutRequest(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
-                    "amount": 5000, "account_bank_code": "MTN",
+                    "amount": 5000, "account_bank_code": "MTN", "source_network": "MTN",
                     "account_number": "237691224472", "receiver_name": "John Doe",
                     "currency": "XAF", "narration": "Paiement fournisseur",
                     "aggregator": "digikuntz",

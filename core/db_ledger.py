@@ -71,7 +71,8 @@ class LedgerMixin:
 
     async def credit_app_manual(self, app_id: int, amount: int, *, aggregator: str,
                                 currency: str = "XAF", reason: str = "manual",
-                                direction: str = "credit") -> None:
+                                direction: str = "credit",
+                                balance_network: str = "orange") -> None:
         """Crédit MANUEL du solde d'une app (ajustement admin, sans transaction).
 
         Contrairement à credit_app, n'exige pas de transaction_id (pas de payin
@@ -83,6 +84,7 @@ class LedgerMixin:
         await self._insert_ledger_row("app_ledger", {
             "app_id": app_id, "direction": direction, "amount": int(amount),
             "currency": currency, "reason": reason, "aggregator": aggregator,
+            "balance_network": balance_network,
         })
 
     async def reserve_payout(
