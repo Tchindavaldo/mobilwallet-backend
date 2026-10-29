@@ -92,20 +92,20 @@ async def reserve_app_payout(app_id: int, aggregator: str, network: str, amount:
     return res
 
 
-async def max_payout_amount(app_id: int, aggregator: str, network: str,
-                            balance: int) -> int:
-    """Plus gros montant virable vers `network`, frais déjà déduits (ce que
-    l'app peut réellement retirer). Recherche dichotomique sur le devis exact
-    (`reserve_app_payout` en dry_run), les frais croissant avec le montant."""
-    lo, hi = 0, max(int(balance or 0), 0)
+async def max_payout(app_id: int, aggregator: str, network: str, balance: int) -> dict:
+    """Plus gros virement possible vers `network` avec ce solde :
+    {max_amount (ce que le bénéficiaire recevra), max_fee (frais pris en plus sur
+    le solde)}. Recherche dichotomique sur le devis exact (`reserve_app_payout`
+    en dry_run), les frais croissant avec le montant."""
+    lo, hi, fee = 0, max(int(balance or 0), 0), 0
     while lo < hi:
         mid = (lo + hi + 1) // 2
         q = await reserve_app_payout(app_id, aggregator, network, mid, None, dry_run=True)
         if q and q.get("ok"):
-            lo = mid
+            lo, fee = mid, int(q.get("fee_from_balance") or 0)
         else:
             hi = mid - 1
-    return lo
+    return {"max_amount": lo, "max_fee": fee}
 
 
 async def refund_payout(row: dict) -> None:

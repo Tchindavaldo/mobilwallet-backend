@@ -222,7 +222,7 @@ tenons le **solde de chaque app** (grand livre `app_ledger`) :
 Un retrait **débite le solde de VOTRE app** (identifiée par la clé API). Invariant :
 `Σ soldes des apps + solde plateforme == solde réel du compte global DigiKUNTZ` — une
 app ne peut jamais retirer plus qu'elle n'a encaissé. Un virement supérieur au solde est
-**refusé (422)** avant tout appel amont ; `balance` y donne le montant maximal retirable vers ce réseau, frais déjà déduits. Le solde est réservé (débité) à
+**refusé (422)** avant tout appel amont ; la réponse donne le vrai solde (`balance`), les frais du virement demandé (`fee`) et le plus gros virement possible : `max_amount` (ce que le bénéficiaire recevra) + `max_fee` (frais pris en plus sur le solde). Le solde est réservé (débité) à
 l'initiation et **remboursé** si le virement échoue.
 
 ```jsonc
