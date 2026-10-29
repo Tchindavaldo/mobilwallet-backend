@@ -320,7 +320,7 @@ fonctionnent par contrat.
 
 `aggregator: "pawapay"` sur `/pay` et `/payout` (réseaux `MTN` / `Orangemoney`, payout
 `MTN` / `ORANGEMONEY`). Statut final via callback `POST /webhook/pawapay` (une seule URL
-pour Checkouts/Deposits/Payouts/Refunds dans le dashboard) ou polling `GET /v2/deposits/{id}` (dépôts). Payouts : webhook seul, pas de polling ;
+pour Checkouts/Deposits/Payouts/Refunds dans le dashboard) ou polling `GET /v2/deposits/{id}` (dépôts). Payouts : webhook, avec vérification de secours `GET /v2/payouts/{id}` (30 s, 90 s, 5 min, 15 min puis toutes les heures) s'il n'arrive pas ;
 vérification manuelle via `GET /status/{ref}/check` (dépôts et payouts : un appel
 `GET /v2/{deposits|payouts}/{id}`) ou `GET /payout/{ref}/check`.
 Config : `PAWAPAY_BASE`, `PAWAPAY_API_TOKEN`, `PAWAPAY_COUNTRY` (CMR), `PAWAPAY_CURRENCY` (XAF).

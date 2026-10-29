@@ -349,8 +349,10 @@ C'est donc à **nous** de tenir le **solde de chaque app**.
 4. `initiate_payout` (`POST {base}/payout`). Panne amont → **503** + remboursement
    du débit ; refus immédiat → `failed` + remboursement.
 5. Réponse immédiate `pending` ; `poll_payout_status` (hors requête) attend le
-   verdict terminal (DigiKUNTZ : registre webhook⇄polling ; pawaPay : webhook seul,
-   pas de polling). `GET /payout/{ref}/check` interroge l'agrégateur UNE fois à la
+   verdict terminal (DigiKUNTZ : registre webhook⇄polling ; pawaPay : webhook, avec
+   filet de sécurité `GET /v2/payouts/{id}` à 30 s, 90 s, 5 min, 15 min puis
+   toutes les heures si le webhook n'arrive pas). `GET /payout/{ref}/check`
+   (ref = `transaction_ref` ou `provider_transaction_id`) interroge l'agrégateur UNE fois à la
    demande et applique le verdict s'il est final (`settlement.settle_verdict`,
    `settled_by = manual_check`).
 6. Verdict : `successful` → le débit reste ; `failed`/`cancelled` → **remboursement**
