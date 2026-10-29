@@ -37,16 +37,18 @@ class ReserveMixin:
             "direction": "credit", "amount": round(float(amount), 6), "currency": currency,
             "transaction_id": transaction_id, "reason": reason})
 
-    async def reserve_payout_with_fee(self, app_id: int, aggregator: str, amount: int,
-                                      network: str, rates: dict, transaction_id: int | None,
-                                      currency: str = "XAF", dry_run: bool = False) -> dict | None:
-        """RPC atomique (ou devis si dry_run) : {ok, balance, needed, fee_from_balance,
-        fee_from_reserve, balance_after}. None si BD désactivée / erreur."""
+    async def reserve_payout_by_network(self, app_id: int, aggregator: str, amount: int,
+                                        source: str, network: str, rates: dict,
+                                        transaction_id: int | None, currency: str = "XAF",
+                                        dry_run: bool = False) -> dict | None:
+        """RPC atomique (ou devis si dry_run) d'un payout débité du solde
+        opérateur `source` vers `network` (migration 033) : {ok, balance, needed,
+        fee_from_balance, fee_from_reserve, balance_after}. None si BD off / erreur."""
         if not self.enabled or app_id is None or not amount:
             return None
-        return await self._run(lambda: self._client.rpc("reserve_payout_with_fee", {
+        return await self._run(lambda: self._client.rpc("reserve_payout_by_network", {
             "p_app_id": app_id, "p_aggregator": aggregator, "p_amount": int(amount),
-            "p_network": network or "", "p_rates": rates or {},
+            "p_source": source or "", "p_network": network or "", "p_rates": rates or {},
             "p_transaction_id": transaction_id, "p_currency": currency,
             "p_dry_run": dry_run}).execute().data)
 
@@ -65,14 +67,33 @@ class ReserveMixin:
                 reason=_REFUND_REASON.get(r["reason"], "payout_refund"),
                 currency=r.get("currency") or "XAF")
 
-    async def app_main_debit(self, transaction_id: int) -> int:
-        """Montant débité du solde de l'app par ce payout (pour le rembourser)."""
+    async def app_main_debit(self, transaction_id: int) -> dict:
+        """Débit du solde de l'app par ce payout (pour le rembourser) :
+        {amount, aggregator, balance_network}."""
+        out = {"amount": 0, "aggregator": None, "balance_network": None}
         if not self.enabled or transaction_id is None:
-            return 0
-        res = await self._run(lambda: self._client.table("app_ledger").select("amount")
+            return out
+        res = await self._run(lambda: self._client.table("app_ledger")
+                              .select("amount, aggregator, balance_network")
                               .eq("transaction_id", transaction_id)
                               .eq("direction", "debit").execute())
-        return sum(int(r["amount"]) for r in (res.data if res else []) or [])
+        for r in (res.data if res else []) or []:
+            out["amount"] += int(r["amount"])
+            out["aggregator"] = r.get("aggregator") or out["aggregator"]
+            out["balance_network"] = r.get("balance_network") or out["balance_network"]
+        return out
+
+    async def balances_by_network(self, app_id: int) -> dict:
+        """Soldes opérateur d'une app : {agg: {réseau: solde}} (vue migration 032)."""
+        if not self.enabled or app_id is None:
+            return {}
+        res = await self._run(lambda: self._client.table("app_balance_by_network")
+                              .select("aggregator, network, balance")
+                              .eq("app_id", app_id).execute())
+        out: dict = {}
+        for r in (res.data if res else []) or []:
+            out.setdefault(r["aggregator"], {})[r["network"]] = int(r["balance"])
+        return out
 
     async def reserves(self, app_id: int | None = None) -> dict:
         """Réserves : {agg: {réseau: montant}} pour une app, ou Σ toutes apps."""

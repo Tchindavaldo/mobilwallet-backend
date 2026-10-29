@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from core import auth, registry, tenants, treasury
 from core.auth import require_admin
 from core.db import db
-from core.fees import FEE_PAYERS
+from core.fees import FEE_PAYERS, fee_network
 from core.schemas.admin import (
     AdminPayoutRequest, AdminPayRequest, AggregatorConfigUpdate, AppCommissionUpdate,
     ApiKeyCreate, ApiKeyCreated, AppCreate, DeveloperCreate, PlatformCredit,
@@ -162,6 +162,7 @@ async def admin_payout(
         currency=body.currency,
         narration=body.narration,
         aggregator=body.aggregator,
+        source_network=body.source_network,
         callback_url=body.callback_url or app.get("callback_url") or "",
         end_user_ref=body.end_user_ref,
     )
@@ -246,7 +247,8 @@ async def admin_app_credit(app_id: int, body: PlatformCredit):
                                   "message": f"Aucune app trouvée avec l'id {app_id}."})
     _check_aggregator(body.aggregator)
     await db.credit_app_manual(app_id, body.amount, aggregator=body.aggregator,
-                               currency=body.currency, reason="manual_admin")
+                               currency=body.currency, reason="manual_admin",
+                               balance_network=fee_network(body.network) or "orange")
     return {"app_id": app_id, "balance": await db.get_app_balance(app_id),
             "by_aggregator": await db.balances_by_aggregator(app_id),
             "currency": body.currency}

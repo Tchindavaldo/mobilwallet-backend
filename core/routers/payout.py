@@ -16,84 +16,26 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from core import availability, registry, tenants
+from core import availability, tenants
 from core.auth import AuthContext, require_api_key
 from core.config import settings
 from core import settlement, status_check
 from core.db import db
 from core.notifications import notify_settled
 from core.schemas.payout import PayoutRequest, PayoutResponse, PayoutResponseDebug
+from core.routers.payout_guards import (  # noqa: F401  (ré-exportés pour payout_ops)
+    _PAYOUT_FLOWS, _guard_duplicate_payout, _require_source_network,
+    _validate_payout_aggregator_and_network)
 from core.upstream_errors import UPSTREAM_MESSAGES
 
 log = logging.getLogger("ai_browser2")
 
 router = APIRouter()
 
-# Codes accountBankCode acceptés AU PAYOUT — STRICT, aucune conversion ni variante.
-# Le client doit envoyer EXACTEMENT l'une de ces valeurs (DigiKUNTZ les exige telles
-# quelles). Différent du payin (qui tolère 'orange' -> 'Orangemoney').
-_PAYOUT_BANK_CODES = ("ORANGEMONEY", "MTN")
-
-# Agrégateurs supportant le payout -> module exposant initiate_payout /
-# poll_payout_status / friendly_msg / PayoutUpstreamError (même interface).
-_PAYOUT_FLOWS = {
-    "digikuntz": "aggregators.digikuntz.payout_flow",
-    "pawapay": "aggregators.pawapay.payout_flow",
-}
-
-
 def _flow(aggregator: str):
     """Module payout_flow de l'agrégateur (import paresseux)."""
     import importlib
     return importlib.import_module(_PAYOUT_FLOWS[aggregator])
-
-
-def _validate_payout_aggregator_and_network(req: PayoutRequest) -> None:
-    """Valide l'agrégateur et exige un account_bank_code STRICT (ORANGEMONEY|MTN),
-    sans aucune tolérance/conversion. Lève 404/400/422 sinon."""
-    if req.aggregator not in registry.names():
-        raise HTTPException(
-            404,
-            {"error": "unknown_aggregator",
-             "message": f"Agrégateur '{req.aggregator}' inconnu.",
-             "supported_aggregators": registry.names()},
-        )
-    if req.aggregator not in _PAYOUT_FLOWS:
-        raise HTTPException(
-            400,
-            {"error": "payout_unsupported",
-             "message": f"L'agrégateur '{req.aggregator}' ne supporte pas les payouts."},
-        )
-    if req.account_bank_code not in _PAYOUT_BANK_CODES:
-        raise HTTPException(
-            422,
-            {"error": "invalid_network",
-             "message": f"account_bank_code doit être exactement l'un de "
-                        f"{list(_PAYOUT_BANK_CODES)} (reçu : '{req.account_bank_code}').",
-             "aggregator": req.aggregator,
-             "supported_account_bank_codes": list(_PAYOUT_BANK_CODES)},
-        )
-
-
-async def _guard_duplicate_payout(req: PayoutRequest) -> None:
-    """Garde anti-doublon : au plus un payout 'pending' par bénéficiaire."""
-    last = await db.last_payout_for_account(req.aggregator, req.account_number)
-    if not last:
-        return
-    if (last.get("status") or "").lower() == "pending":
-        raise HTTPException(
-            409,
-            {
-                "error": "pending_exists",
-                "message": (
-                    f"Un virement est déjà en cours (pending) vers le compte "
-                    f"{req.account_number}. Veuillez attendre son aboutissement."
-                ),
-                "aggregator": req.aggregator,
-                "account_number": req.account_number,
-                "transaction_id": last.get("id"),
-            },
-        )
 
 
 async def _execute_payout(
@@ -104,6 +46,7 @@ async def _execute_payout(
 ) -> PayoutResponse | PayoutResponseDebug:
     """Logique partagée d'exécution payout (réutilisée par /payout ET admin)."""
     _validate_payout_aggregator_and_network(req)
+    await _require_source_network(req, app_id)
     await _guard_duplicate_payout(req)
     op_status = await availability.guard(req.aggregator, req.account_bank_code, "payout")
     resp = await _run_payout(req, app_id, api_key_id, debug)
@@ -156,7 +99,8 @@ async def _prepare_payout(req: PayoutRequest, app_id: int, api_key_id: int | Non
     if charges["provider_fee"]:
         await db.set_provider_fee(tx_id, charges["provider_fee"])
     reserved = await settlement.reserve_app_payout(app_id, req.aggregator, req.account_bank_code,
-                                                   req.amount, tx_id, req.currency)
+                                                   req.amount, tx_id, req.currency,
+                                                   source=req.source_network)
     if not reserved or not reserved.get("ok"):
         balance = (reserved or {}).get("balance", 0)
         needed = (reserved or {}).get("needed", req.amount + charges["provider_fee"])
@@ -170,8 +114,10 @@ async def _prepare_payout(req: PayoutRequest, app_id: int, api_key_id: int | Non
              "aggregator": req.aggregator,
              "balance": balance, "requested": needed,
              "fee": (reserved or {}).get("fee_from_balance", 0),
+             "source_network": req.source_network,
              **await settlement.max_payout(app_id, req.aggregator,
-                                           req.account_bank_code, balance),
+                                           req.account_bank_code, balance,
+                                           source=req.source_network),
              "currency": req.currency},
         )
     balance_after = reserved.get("balance_after")
@@ -374,7 +320,8 @@ async def _execute_payout_mock(req, app_id, api_key_id, debug):
         req.aggregator, req, app_id=app_id, api_key_id=api_key_id,
         end_user_ref=req.end_user_ref, callback_url=req.callback_url)
     reserved = await settlement.reserve_app_payout(app_id, req.aggregator, req.account_bank_code,
-                                                   req.amount, tx_id, req.currency)
+                                                   req.amount, tx_id, req.currency,
+                                                   source=req.source_network)
     if not reserved or not reserved.get("ok"):
         balance = (reserved or {}).get("balance", 0)
         await db.update_payout(tx_id, status="failed", success=False,

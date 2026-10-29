@@ -36,7 +36,9 @@ async def credit_payin(app_id: int | None, tx_id: int | None, amount: int,
         await db.set_provider_fee(tx_id, b.provider_fee)
     await db.credit_app(app_id, b.app_amount, transaction_id=tx_id, reason="payin_successful",
                         aggregator=aggregator or None, details={
-                            "network": fee_network(network) or None, "operation": "deposit",
+                            "network": fee_network(network) or None,
+                            "balance_network": fee_network(network) or None,
+                            "operation": "deposit",
                             "gross": b.gross, "fee_payer": fee_payer(agg_config),
                             "deposit_fee": b.provider_fee, "deposit_fee_rate": rate,
                             "payout_fee_reserve": b.payout_fee_reserve,
@@ -62,7 +64,7 @@ async def payout_charges(aggregator: str, network: str, amount: int) -> dict:
     """Ce qu'un payout coûte en compta : {provider_fee, app_pays, platform_extra}.
 
     - app_pays : frais à la charge de l'app (fee_payer='app') -> réserve par
-      réseau + solde, calculés atomiquement par db.reserve_payout_with_fee ;
+      réseau + solde, calculés atomiquement par db.reserve_payout_by_network ;
     - platform_extra : frais à la charge de la plateforme (fee_payer='platform')."""
     agg_config = await db.get_aggregator_config(aggregator) if aggregator else None
     fee = provider_fee(amount, agg_config, await _rate(aggregator, network, "payout"))
@@ -73,14 +75,16 @@ async def payout_charges(aggregator: str, network: str, amount: int) -> dict:
 
 async def reserve_app_payout(app_id: int, aggregator: str, network: str, amount: int,
                              tx_id: int | None, currency: str = "XAF",
-                             dry_run: bool = False) -> dict | None:
-    """Devis (dry_run) ou réservation atomique d'un payout d'app : montant sur
-    le solde, frais exacts sur la réserve du réseau, le reste des frais (fonds
-    venus d'un autre réseau) arrondi à l'excès sur le solde."""
+                             dry_run: bool = False, source: str = "") -> dict | None:
+    """Devis (dry_run) ou réservation atomique d'un payout d'app débité du solde
+    opérateur `source` (défaut : réseau de destination). Même réseau : frais pris
+    sur la réserve prépayée ; interréseau : frais du réseau de destination pris
+    sur le solde source (arrondis à l'excès)."""
     charges = await payout_charges(aggregator, network, amount)
     rates = await payout_rates(aggregator) if charges["app_pays"] else {}
-    res = await db.reserve_payout_with_fee(app_id, aggregator, amount, fee_network(network),
-                                           rates, tx_id, currency, dry_run)
+    res = await db.reserve_payout_by_network(
+        app_id, aggregator, amount, fee_network(source or network), fee_network(network),
+        rates, tx_id, currency, dry_run)
     if not dry_run and tx_id and res and res.get("ok"):
         agg_config = await db.get_aggregator_config(aggregator) if aggregator else None
         await db.set_ledger_details(tx_id, "debit", {
@@ -92,7 +96,8 @@ async def reserve_app_payout(app_id: int, aggregator: str, network: str, amount:
     return res
 
 
-async def max_payout(app_id: int, aggregator: str, network: str, balance: int) -> dict:
+async def max_payout(app_id: int, aggregator: str, network: str, balance: int,
+                     source: str = "") -> dict:
     """Plus gros virement possible vers `network` avec ce solde :
     {max_amount (ce que le bénéficiaire recevra), max_fee (frais pris en plus sur
     le solde)}. Recherche dichotomique sur le devis exact (`reserve_app_payout`
@@ -100,7 +105,8 @@ async def max_payout(app_id: int, aggregator: str, network: str, balance: int) -
     lo, hi, fee = 0, max(int(balance or 0), 0), 0
     while lo < hi:
         mid = (lo + hi + 1) // 2
-        q = await reserve_app_payout(app_id, aggregator, network, mid, None, dry_run=True)
+        q = await reserve_app_payout(app_id, aggregator, network, mid, None, dry_run=True,
+                                     source=source)
         if q and q.get("ok"):
             lo, fee = mid, int(q.get("fee_from_balance") or 0)
         else:
@@ -116,8 +122,11 @@ async def refund_payout(row: dict) -> None:
     if app_id is None or not tx_id:
         return
     aggregator = row.get("aggregator", "")
-    await db.credit_app(app_id, await db.app_main_debit(tx_id), transaction_id=tx_id,
-                        reason="payout_refund")
+    debit = await db.app_main_debit(tx_id)
+    await db.credit_app(app_id, debit["amount"], transaction_id=tx_id, reason="payout_refund",
+                        aggregator=debit["aggregator"] or aggregator or None,
+                        details={"balance_network": debit["balance_network"]}
+                        if debit["balance_network"] else None)
     await db.refund_reserve_debits(app_id, tx_id)
     agg_config = await db.get_aggregator_config(aggregator)
     fee = int(row.get("provider_fee") or 0)

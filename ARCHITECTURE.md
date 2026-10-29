@@ -37,6 +37,7 @@ ai_browser2/
 │   │   ├── availability.py       GET /availability (état des opérateurs), GET /availability/status-page (page de statut de l'agrégateur), GET /pay/minimum (min/max d'un dépôt) + POST /operators/predict.
 │   │   ├── admin_statements.py   POST /admin/{agg}/statements/sync + GET /admin/{agg}/statements (paginé).
 │   │   ├── payout_ops.py         POST /payout/bulk (≤20, un appel agrégateur) + POST /payout/{ref}/cancel.
+│   │   ├── payout_guards.py      Contrôles avant débit : agrégateur/réseau stricts, source_network, anti-doublon.
 │   │   ├── payment_page.py       POST /pay/page : page de paiement hébergée -> redirect_url.
 │   │   ├── system.py             /health, /aggregators, /config/max-tabs.
 │   │   ├── payments.py           /pay (dispatch, mock, chemin navigateur/replay, chemin « API
@@ -88,7 +89,7 @@ ai_browser2/
 │   ├── db.py                     Couche Supabase async (no-op si non configuré) : transactions (audit, statut, annulation) ;
 │   │                             (core/db_diagnostics.py, core/db_config.py, core/db_ledger.py en mixins).
 │   ├── db_diagnostics.py         DiagnosticsMixin (hérité par Database) : transaction_errors, traces IA.
-│   ├── db_reserve.py             ReserveMixin : réserve de frais de payout PAR APP et PAR RÉSEAU, au centime (app_reserve_ledger, RPC reserve_payout_with_fee).
+│   ├── db_reserve.py             ReserveMixin : réserve de frais de payout PAR APP et PAR RÉSEAU, au centime (app_reserve_ledger, RPC reserve_payout_by_network) + soldes par opérateur.
 │   ├── db_config.py              ConfigMixin (hérité par Database) : réglages app_settings, templates curl.
 │   ├── db_ledger.py              LedgerMixin (hérité par Database) : comptabilité —
 │   │                             app_ledger (credit_app/get_app_balance/reserve_payout/backfill/total),
@@ -215,7 +216,9 @@ ai_browser2/
 │       ├── 029_digikuntz_curl_templates.sql  curl_templates renommée digikuntz_curl_templates.
 │       ├── 030_pawapay_statement_transactions.sql  relevé pawaPay : 1 ligne par transaction,
 │                                       frais pawaPay et frais opérateur en colonnes.
-│       └── 031_ledger_zero_credit.sql  app_ledger.amount >= 0 : payin absorbé par les frais visible (crédit 0).
+│       ├── 031_ledger_zero_credit.sql  app_ledger.amount >= 0 : payin absorbé par les frais visible (crédit 0).
+│       ├── 032_balance_by_network.sql  app_ledger.balance_network + vue app_balance_by_network (solde par opérateur).
+│       └── 033_reserve_payout_by_network.sql  Fonction : payout débité d'un solde opérateur (même réseau / interréseau).
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── fly.toml                      Déploiement Fly.io : machine toujours allumée (auto_stop off).
@@ -390,16 +393,26 @@ MobileWallet arrondis à l'excès ; ceil(brut x taux de payout du réseau du dé
 va dans la **réserve de l'app pour ce réseau** (app_reserve_ledger, au centime) ;
 le reste sur le solde de l'app (francs entiers).
 
-Payout de X vers le réseau n (SQL `reserve_payout_with_fee`, atomique) :
-- partie couverte par la réserve n : frais EXACTS (centimes) pris sur la réserve,
-  qui couvre donc toujours, quelle que soit la façon de retirer ;
-- partie venue d'un autre réseau m : frais arrondis à l'excès pris sur le solde,
-  et la réserve m correspondante est libérée vers la plateforme ;
-- solde vidé : la réserve restante est libérée ;
-- échec : chaque débit (solde, réserves) est rendu.
+Soldes PAR OPÉRATEUR (migration 032) : chaque ligne de app_ledger porte
+`balance_network` (dépôt = réseau du dépôt ; payout = solde SOURCE choisi par
+l'app ; remboursement = même réseau que le débit). Vue `app_balance_by_network`.
+
+Payout de X depuis le solde opérateur s vers le réseau n (SQL
+`reserve_payout_by_network`, migration 033, atomique ; `source_network` obligatoire,
+sinon 422 `source_network_required` avec les soldes, rien n'est débité) :
+- s = n : frais EXACTS (centimes) pris sur la réserve n prépayée au dépôt ; le
+  reste éventuel (réserve insuffisante) arrondi à l'excès sur le solde s ;
+- s ≠ n (interréseau) : frais ceil(taux n x X) pris sur le solde s, et la
+  réserve s liée à X est libérée vers la plateforme ;
+- solde s vidé : la réserve s restante est libérée ;
+- échec : chaque débit (solde, réserves) est rendu, sur le même solde opérateur.
 
 core/treasury.py reverse à la plateforme, en francs entiers et quand rien n'est en
 vol, la réserve libérée puis le surplus d'arrondi (écart réel - interne, < 10 XAF).
 `GET /payout/quote` donne au client les frais pris sur son solde avant d'appeler
 `POST /payout` (qui renvoie aussi `fee` et `total_debited`). `GET /balance` (app)
-= solde retirable ; `GET /admin/apps/{id}/balance` = solde + réserves par réseau + total.
+= `network` {mtn, orange} (solde retirable sans frais vers ce même opérateur) +
+`aggregators` (même détail par agrégateur) + `balance` (total, information) ;
+`GET /admin/apps/{id}/balance` = solde + réserves par réseau + total.
+Refus `insufficient_balance` : `balance` (solde opérateur source), `fee`,
+`max_amount` (ce que le bénéficiaire recevra au plus) et `max_fee`.

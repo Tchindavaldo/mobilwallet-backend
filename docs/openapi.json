@@ -925,6 +925,17 @@
               "default": "digikuntz",
               "title": "Aggregator"
             }
+          },
+          {
+            "name": "source_network",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Solde opérateur débité : ORANGEMONEY | MTN",
+              "title": "Source Network"
+            },
+            "description": "Solde opérateur débité : ORANGEMONEY | MTN"
           }
         ],
         "responses": {
@@ -1268,7 +1279,7 @@
           "transactions"
         ],
         "summary": "Solde de votre app",
-        "description": "Solde logique de VOTRE app = somme de vos encaissements réussis − vos retraits.\n\nC'est le montant disponible pour un virement (`POST /payout`).",
+        "description": "Solde de VOTRE app = encaissements réussis − retraits.\n\n- `network` : solde par opérateur (tous agrégateurs), retirable SANS frais vers\n  ce même opérateur ; vers l'autre (interréseau), les frais du réseau de\n  destination sont pris en plus. C'est ce solde que débite `POST /payout`\n  (`source_network`).\n- `aggregators` : le même détail par agrégateur.\n- `balance` : total, à titre d'information.",
         "operationId": "app_balance_balance_get",
         "responses": {
           "200": {
@@ -3332,6 +3343,21 @@
             "description": "Nom de l'agrégateur.",
             "default": "digikuntz"
           },
+          "source_network": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Network",
+            "description": "Solde opérateur de l'app à débiter : 'MTN' ou 'ORANGEMONEY'.",
+            "examples": [
+              "MTN"
+            ]
+          },
           "callback_url": {
             "type": "string",
             "title": "Callback Url",
@@ -4054,6 +4080,21 @@
             "description": "Nom de l'agrégateur (cf. GET /aggregators).",
             "default": "digikuntz"
           },
+          "source_network": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Network",
+            "description": "Solde opérateur à débiter : 'MTN' ou 'ORANGEMONEY' (cf. GET /balance -> network). Même réseau que account_bank_code : sans frais ; autre réseau (interréseau) : frais du réseau de destination pris en plus. Absent : 422 `source_network_required` avec vos soldes, rien n'est débité.",
+            "examples": [
+              "MTN"
+            ]
+          },
           "callback_url": {
             "type": "string",
             "title": "Callback Url",
@@ -4089,7 +4130,8 @@
             "amount": 5000,
             "currency": "XAF",
             "narration": "Paiement fournisseur",
-            "receiver_name": "John Doe"
+            "receiver_name": "John Doe",
+            "source_network": "MTN"
           }
         ]
       },
@@ -4173,6 +4215,15 @@
             "title": "Currency",
             "description": "Devise.",
             "default": "XAF"
+          },
+          "network": {
+            "type": "string",
+            "title": "Network",
+            "description": "Crédit d'app uniquement : solde opérateur crédité ('mtn' | 'orange').",
+            "default": "orange",
+            "examples": [
+              "orange"
+            ]
           }
         },
         "type": "object",

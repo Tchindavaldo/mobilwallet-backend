@@ -59,6 +59,8 @@ class PlatformCredit(BaseModel):
                             "cet argent (soldes séparés par agrégateur).",
                             examples=["pawapay"])
     currency: str = Field("XAF", description="Devise.")
+    network: str = Field("orange", description="Crédit d'app uniquement : solde opérateur "
+                         "crédité ('mtn' | 'orange').", examples=["orange"])
 
 
 class AdminPayoutRequest(BaseModel):
@@ -72,6 +74,9 @@ class AdminPayoutRequest(BaseModel):
     currency: str = Field("XAF", description="Devise du virement.")
     narration: str = Field("", description="Motif / libellé du virement.")
     aggregator: str = Field("digikuntz", description="Nom de l'agrégateur.")
+    source_network: str | None = Field(
+        None, description="Solde opérateur de l'app à débiter : 'MTN' ou 'ORANGEMONEY'.",
+        examples=["MTN"])
     callback_url: str = Field("", description="URL de callback (défaut: celle de l'app).")
     end_user_ref: str | None = Field(
         None, description="Identifiant opaque de l'utilisateur final ; facultatif.")
