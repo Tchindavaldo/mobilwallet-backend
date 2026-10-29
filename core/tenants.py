@@ -350,16 +350,20 @@ async def mark_delivery(tx_id: int, event: str, *, delivered: bool,
 
 
 async def get_transaction_scoped(transaction_ref: str, app_id: int) -> dict | None:
-    """Transaction par référence, bornée à l'app appelante : None si elle
+    """Transaction par référence (`transaction_ref`, à défaut
+    `provider_transaction_id`), bornée à l'app appelante : None si elle
     n'existe pas OU appartient à une autre app (on ne révèle pas son existence)."""
     client = _client()
     if client is None:
         return None
 
     def _select():
-        res = (client.table("transactions").select("*")
-               .eq("transaction_ref", transaction_ref)
-               .eq("app_id", app_id).limit(1).execute())
-        return res.data[0] if res.data else None
+        for col in ("transaction_ref", "provider_transaction_id"):
+            res = (client.table("transactions").select("*")
+                   .eq(col, transaction_ref)
+                   .eq("app_id", app_id).limit(1).execute())
+            if res.data:
+                return res.data[0]
+        return None
 
     return await db._run(_select)

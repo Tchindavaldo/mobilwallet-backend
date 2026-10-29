@@ -192,7 +192,8 @@ async def _apply_init(req, app_id, tx_id, init, balance_after, debug):
         tx_id, status=internal if internal in ("pending",) else internal,
         success=(internal == "successful"),
         message=payout_flow.friendly_msg(internal),
-        provider_id=provider_id, raw=init["raw_status"])
+        provider_id=provider_id, raw=init["raw_status"],
+        transaction_ref=transaction_ref)
 
     # 3a) Verdict terminal immédiat (rare) : settle + notifie + rembourse si échec.
     if internal in ("successful", "failed", "cancelled"):
@@ -273,7 +274,8 @@ async def execute_platform_payout(
     internal = init["internal_status"]
     await db.update_payout(tx_id, status=internal, success=(internal == "successful"),
                            message=payout_flow.friendly_msg(internal),
-                           provider_id=provider_id, raw=init["raw_status"])
+                           provider_id=provider_id, raw=init["raw_status"],
+                           transaction_ref=transaction_ref)
 
     if internal in ("successful", "failed", "cancelled"):
         if internal != "successful":

@@ -470,6 +470,7 @@ class LedgerMixin:
     async def update_payout(
         self, tx_id: int, *, status: str, message: str = "", success: bool = False,
         provider_id: str = "", raw: str = "", settled_by: str = "",
+        transaction_ref: str = "",
     ) -> None:
         """MAJ le verdict d'un payout. Idempotent sur les colonnes simples."""
         if not self.enabled or tx_id is None:
@@ -477,6 +478,8 @@ class LedgerMixin:
         patch = {"status": status, "message": message, "success": success}
         if provider_id:
             patch["provider_transaction_id"] = provider_id
+        if transaction_ref:
+            patch["transaction_ref"] = transaction_ref
         if settled_by:
             patch["settled_by"] = settled_by
         if raw:

@@ -4,11 +4,13 @@
 `initiate_payout` / `poll_payout_status` / `check_payout_status` / `friendly_msg`
 / `PayoutUpstreamError`.
 
-Pas de polling continu sur les payouts pawaPay : le verdict arrive par webhook.
-`check_payout_status` fait UN appel GET /v2/payouts/{id}, à la demande
-(endpoint `GET /payout/{ref}/check`).
+Le verdict arrive normalement par webhook. Filet de sécurité si le webhook
+n'arrive pas (URL non configurée, callback perdu) : quelques appels espacés à
+GET /v2/payouts/{id} (`_FALLBACK_CHECKS_S`). `check_payout_status` fait le même
+appel, à la demande (endpoint `GET /payout/{ref}/check`).
 """
 
+import asyncio
 import logging
 
 from . import client
@@ -56,11 +58,35 @@ def _message(status: str, failure: dict | None) -> str:
     return f"{msg} {detail}" if detail and status in ("failed", "cancelled") else msg
 
 
+# Délais (s) entre deux vérifications de secours si le webhook n'arrive pas ;
+# le dernier se répète ensuite jusqu'au verdict.
+_FALLBACK_CHECKS_S = (30, 90, 300, 900, 3600)
+
+
 async def poll_payout_status(provider_id: str) -> dict:
-    """Attend le statut final livré par le webhook (aucun appel à pawaPay)."""
-    v = await client.wait_webhook(provider_id)
-    return {"status": v["status"], "message": _message(v["status"], v.get("failure")),
-            "settled_by": v["settled_by"]}
+    """Attend le statut final livré par le webhook ; à défaut, interroge
+    pawaPay à intervalles croissants (`_FALLBACK_CHECKS_S`)."""
+    waiter = asyncio.ensure_future(client.wait_webhook(provider_id))
+    i = 0
+    try:
+        while True:
+            delay = _FALLBACK_CHECKS_S[min(i, len(_FALLBACK_CHECKS_S) - 1)]
+            i += 1
+            done, _ = await asyncio.wait({waiter}, timeout=delay)
+            if done:
+                v = waiter.result()
+                return {"status": v["status"],
+                        "message": _message(v["status"], v.get("failure")),
+                        "settled_by": v["settled_by"]}
+            res = await client.fetch_status("payouts", provider_id)
+            if res and res["internal"] in client.TERMINAL:
+                log.info("pawapay payout %s: webhook absent, statut lu -> %s",
+                         provider_id, res["internal"])
+                return {"status": res["internal"],
+                        "message": _message(res["internal"], res["failure"]),
+                        "settled_by": "polling"}
+    finally:
+        waiter.cancel()
 
 
 async def check_payout_status(provider_id: str) -> dict | None:
