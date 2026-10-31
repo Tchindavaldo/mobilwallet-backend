@@ -39,7 +39,7 @@ def notify_settled(tx_id: int, result_or_status, *, transaction_ref: str = "",
                    amount: int = 0, network: str = "", phone: str = "",
                    end_user_ref: str | None = None,
                    provider_transaction_id: str = "",
-                   callback_url: str = "") -> None:
+                   callback_url: str = "", message: str = "") -> None:
     """Déclenche (fire-and-forget) la notification du verdict d'une transaction.
 
     `result_or_status` est soit un statut str, soit un objet portant .final_status
@@ -59,6 +59,8 @@ def notify_settled(tx_id: int, result_or_status, *, transaction_ref: str = "",
         "end_user_ref": end_user_ref,
         "provider_transaction_id": provider_transaction_id
         or getattr(result_or_status, "provider_transaction_id", "") or "",
+        # Message utilisateur exact du verdict (ex. solde insuffisant).
+        "message": message or getattr(result_or_status, "final_message", "") or "",
     }
     asyncio.create_task(_deliver(tx_id, status, payload_data, callback_url=callback_url))
 

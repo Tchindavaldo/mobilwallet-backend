@@ -166,5 +166,5 @@ async def settle_verdict(provider_id: str, internal: str, message: str,
         amount=row.get("amount", 0), network=row.get("network", ""),
         phone=row.get("phone", ""), end_user_ref=row.get("end_user_ref"),
         provider_transaction_id=provider_id,
-        callback_url=row.get("callback_url") or "",
+        callback_url=row.get("callback_url") or "", message=message or "",
     )
