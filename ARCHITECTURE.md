@@ -222,7 +222,7 @@ ai_browser2/
 │
 ├── docs/openapi.json             Swagger versionné (régénérer via scripts/dump_openapi.py).
 ├── fly.toml                      Déploiement Fly.io : machine toujours allumée (auto_stop off).
-├── .github/workflows/            Actions manuelles : fly-on.yml (allumer, permanent) /
+├── .github/workflows/            Actions manuelles : fly-on.yml (allumer, arrêt auto si inutilisé) /
 │                                 fly-off.yml (éteindre complètement). Secret FLY_API_TOKEN.
 ├── scripts/dump_openapi.py       Dump du schéma OpenAPI.
 ├── todo/                         Chantiers planifiés (migration vue admin, fallback poll DigiKUNTZ).

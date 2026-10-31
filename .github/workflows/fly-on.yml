@@ -1,7 +1,7 @@
-# Allume la machine Fly de façon PERMANENTE (jamais d'arrêt automatique).
-# Lancement : onglet Actions > « Fly — allumer (permanent) » > Run workflow.
+# Allume la machine Fly : elle s'arrête seule sans trafic et redémarre à la 1re requête.
+# Lancement : onglet Actions > « Fly — allumer (arrêt auto si inutilisé) » > Run workflow.
 # Secret requis : FLY_API_TOKEN (fly tokens create deploy -a mobilwallet-backend).
-name: Fly — allumer (permanent)
+name: Fly — allumer (arrêt auto si inutilisé)
 
 on:
   workflow_dispatch:
@@ -28,12 +28,12 @@ jobs:
         if: ${{ inputs.deploy }}
         run: flyctl deploy --remote-only -a "$FLY_APP"
 
-      - name: Rendre chaque machine permanente puis la démarrer
+      - name: Arrêt auto si inutilisé, démarrage auto au trafic, puis démarrer
         run: |
           ids=$(flyctl machine list -a "$FLY_APP" --json | jq -r '.[].id')
           if [ -z "$ids" ]; then echo "Aucune machine : lancer avec deploy=true." >&2; exit 1; fi
           for id in $ids; do
-            flyctl machine update "$id" -a "$FLY_APP" --autostop=off --autostart=true --yes
+            flyctl machine update "$id" -a "$FLY_APP" --autostop=stop --autostart=true --yes
             flyctl machine start "$id" -a "$FLY_APP" || true
           done
 
