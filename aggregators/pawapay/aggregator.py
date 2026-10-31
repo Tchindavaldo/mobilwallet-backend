@@ -16,7 +16,7 @@ import time
 from core import registry
 from core.base import Aggregator, CurlTemplate, PaymentRequest, PaymentResult
 
-from . import client
+from . import client, operations
 
 log = logging.getLogger("ai_browser2")
 
@@ -72,7 +72,12 @@ class PawapayAggregator(Aggregator):
 
         if init["internal"] == "pending":
             result.final_status = "ussd_sent"
-            result.final_message = friendly_msg("ussd_sent")
+            # Même message que DigiKUNTZ, avec le code USSD pawaPay du réseau.
+            code = await operations.ussd_code(req.network)
+            result.final_message = (
+                f"Composez {code} sur votre téléphone pour valider la transaction "
+                f"{self.network_label(req.network)}." if code
+                else friendly_msg("ussd_sent"))
             result.ussd_sent_at = time.time()
             result.poll_after_close = {"kind": "deposits", "provider_id": deposit_id}
             return result
