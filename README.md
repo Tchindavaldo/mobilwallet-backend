@@ -229,7 +229,7 @@ l'initiation et **remboursé** si le virement échoue.
 `network: {"mtn": …, "orange": …}`, le total `balance` est donné à titre d'information).
 Chaque virement débite le solde opérateur choisi par `source_network` (obligatoire ;
 exactement `MTN` ou `ORANGEMONEY` en majuscules ; absent → `422 source_network_required`,
-autre valeur (ex. `mtn`) → `422 source_network_invalid`, avec vos soldes, rien n'est débité) :
+autre valeur (ex. `mtn`) → `422 source_network_invalid`, rien n'est débité ; le solde n'est renvoyé que sur `insufficient_balance`) :
 - même réseau que `account_bank_code` : **sans frais** (prépayés au dépôt) ;
 - autre réseau (interréseau) : frais du réseau de destination pris en plus sur ce solde.
 

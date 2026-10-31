@@ -400,7 +400,7 @@ l'app ; remboursement = même réseau que le débit). Vue `app_balance_by_networ
 Payout de X depuis le solde opérateur s vers le réseau n (SQL
 `reserve_payout_by_network`, migration 033, atomique ; `source_network` obligatoire,
 `MTN`/`ORANGEMONEY` en majuscules ; absent → 422 `source_network_required`, autre
-valeur → 422 `source_network_invalid`, avec les soldes, rien n'est débité) :
+valeur → 422 `source_network_invalid`, sans solde, rien n'est débité) :
 - s = n : frais EXACTS (centimes) pris sur la réserve n prépayée au dépôt ; le
   reste éventuel (réserve insuffisante) arrondi à l'excès sur le solde s ;
 - s ≠ n (interréseau) : frais ceil(taux n x X) pris sur le solde s, et la

@@ -44,7 +44,7 @@ class PayoutRequest(BaseModel):
                           "frais ; autre réseau (interréseau) : frais du réseau de "
                           "destination pris en plus. En MAJUSCULES strictes. Absent : 422 "
                           "`source_network_required` ; autre valeur : 422 "
-                          "`source_network_invalid` ; avec vos soldes, rien n'est débité.",
+                          "`source_network_invalid` , rien n'est débité.",
         examples=["MTN"])
     callback_url: str = Field("", description="URL de callback (défaut: celle de l'app).")
     end_user_ref: str | None = Field(

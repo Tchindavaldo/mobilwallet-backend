@@ -51,11 +51,10 @@ def _validate_payout_aggregator_and_network(req: PayoutRequest) -> None:
 
 async def _require_source_network(req: PayoutRequest, app_id: int) -> None:
     """Exige le solde opérateur à débiter (`source_network`, même liste stricte
-    que account_bank_code). Absent ou invalide : 422 avec les soldes opérateur
-    de l'app chez cet agrégateur, rien n'est débité."""
+    que account_bank_code). Absent ou invalide : 422 SANS solde (le solde n'est
+    renvoyé que sur solde insuffisant), rien n'est débité."""
     if req.source_network in _PAYOUT_BANK_CODES:
         return
-    balances = (await db.balances_by_network(app_id)).get(req.aggregator, {})
     if req.source_network:
         error = "source_network_invalid"
         message = (f"source_network invalide : '{req.source_network}'. Valeurs acceptées, "
@@ -69,9 +68,7 @@ async def _require_source_network(req: PayoutRequest, app_id: int) -> None:
         {"error": error,
          "message": message,
          "aggregator": req.aggregator,
-         "supported_source_networks": list(_PAYOUT_BANK_CODES),
-         "network": {"mtn": balances.get("mtn", 0), "orange": balances.get("orange", 0)},
-         "currency": req.currency},
+         "supported_source_networks": list(_PAYOUT_BANK_CODES)},
     )
 
 
