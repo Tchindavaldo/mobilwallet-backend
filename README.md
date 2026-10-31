@@ -338,17 +338,17 @@ Config : `PAWAPAY_BASE`, `PAWAPAY_API_TOKEN`, `PAWAPAY_COUNTRY` (CMR), `PAWAPAY_
 
 ## Déploiement (Fly.io)
 
-`fly.toml` : la machine **s'arrête seule sans trafic** et redémarre à la première
-requête (`auto_stop_machines = 'stop'`, `min_machines_running = 0`). Pendant la phase de test, on l'allume/éteint à la demande
+`fly.toml` garde la machine **toujours allumée** (`auto_stop_machines = 'off'`,
+`min_machines_running = 1`). Pendant la phase de test, on l'allume/éteint à la demande
 depuis GitHub (onglet **Actions**, bouton *Run workflow*) :
 
-- **Fly — allumer (arrêt auto si inutilisé)** (`.github/workflows/fly-on.yml`) : démarre la
-  machine, arrêt automatique sans trafic. Option `deploy` pour redéployer le code d'abord.
+- **Fly — allumer (permanent)** (`.github/workflows/fly-on.yml`) : démarre la machine et
+  désactive tout arrêt automatique. Option `deploy` pour redéployer le code d'abord.
 - **Fly — éteindre** (`.github/workflows/fly-off.yml`) : arrête la machine et empêche
   son redémarrage sur trafic entrant.
 
 Prérequis : secret de dépôt `FLY_API_TOKEN` (`fly tokens create deploy -a mobilwallet-backend`).
-Un `fly deploy` ré-applique `fly.toml`, (arrêt auto sans trafic).
+Un `fly deploy` ré-applique `fly.toml`, donc rallume la machine en mode permanent.
 
 ## Tests manuels
 
