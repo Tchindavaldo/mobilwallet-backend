@@ -230,3 +230,7 @@ Après toute modif des endpoints/modèles dans `core/server.py`, régénérer la
      l'utilisateur le fichier/les lignes exactes à coller dans Supabase → SQL
      Editor, puis vérifier en lecture (`pg_proc`) qu'elle existe.
   3. Toujours appliquer la migration AVANT de déployer le code qui l'utilise.
+
+## Plusieurs options : DEMANDER, ne rien inventer (OBLIGATOIRE)
+
+Quand une action a plusieurs options possibles (ex. workflow avec cases a cocher, mode permanent ou non, deployer ou non, quelle branche), DEMANDER a l utilisateur laquelle prendre AVANT d agir. Ne jamais choisir une option ni inventer un parametre qu il n a pas donne. Regarder comment l action a ete lancee precedemment ne suffit pas : demander.
