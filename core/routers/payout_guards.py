@@ -56,10 +56,18 @@ async def _require_source_network(req: PayoutRequest, app_id: int) -> None:
     if req.source_network in _PAYOUT_BANK_CODES:
         return
     balances = (await db.balances_by_network(app_id)).get(req.aggregator, {})
+    if req.source_network:
+        error = "source_network_invalid"
+        message = (f"source_network invalide : '{req.source_network}'. Valeurs acceptées, "
+                   "exactement en MAJUSCULES : 'MTN' ou 'ORANGEMONEY'.")
+    else:
+        error = "source_network_required"
+        message = ("Choisissez le solde opérateur à débiter : source_network = 'MTN' ou "
+                   "'ORANGEMONEY' (en MAJUSCULES).")
     raise HTTPException(
         422,
-        {"error": "source_network_required",
-         "message": "Choisissez le solde opérateur à débiter (MTN ou Orange).",
+        {"error": error,
+         "message": message,
          "aggregator": req.aggregator,
          "supported_source_networks": list(_PAYOUT_BANK_CODES),
          "network": {"mtn": balances.get("mtn", 0), "orange": balances.get("orange", 0)},

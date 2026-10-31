@@ -228,7 +228,8 @@ l'initiation et **remboursé** si le virement échoue.
 **Soldes par opérateur.** Le solde de l'app est tenu par opérateur (`GET /balance` →
 `network: {"mtn": …, "orange": …}`, le total `balance` est donné à titre d'information).
 Chaque virement débite le solde opérateur choisi par `source_network` (obligatoire ;
-absent → `422 source_network_required` avec vos soldes, rien n'est débité) :
+exactement `MTN` ou `ORANGEMONEY` en majuscules ; absent → `422 source_network_required`,
+autre valeur (ex. `mtn`) → `422 source_network_invalid`, avec vos soldes, rien n'est débité) :
 - même réseau que `account_bank_code` : **sans frais** (prépayés au dépôt) ;
 - autre réseau (interréseau) : frais du réseau de destination pris en plus sur ce solde.
 

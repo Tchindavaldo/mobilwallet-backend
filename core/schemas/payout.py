@@ -42,8 +42,9 @@ class PayoutRequest(BaseModel):
         None, description="Solde opérateur à débiter : 'MTN' ou 'ORANGEMONEY' (cf. GET "
                           "/balance -> network). Même réseau que account_bank_code : sans "
                           "frais ; autre réseau (interréseau) : frais du réseau de "
-                          "destination pris en plus. Absent : 422 `source_network_required` "
-                          "avec vos soldes, rien n'est débité.",
+                          "destination pris en plus. En MAJUSCULES strictes. Absent : 422 "
+                          "`source_network_required` ; autre valeur : 422 "
+                          "`source_network_invalid` ; avec vos soldes, rien n'est débité.",
         examples=["MTN"])
     callback_url: str = Field("", description="URL de callback (défaut: celle de l'app).")
     end_user_ref: str | None = Field(
