@@ -417,3 +417,7 @@ vol, la réserve libérée puis le surplus d'arrondi (écart réel - interne, < 
 `GET /admin/apps/{id}/balance` = solde + réserves par réseau + total.
 Refus `insufficient_balance` : `balance` (solde opérateur source), `fee`,
 `max_amount` (ce que le bénéficiaire recevra au plus) et `max_fee`.
+
+## ops/fly-night-worker
+
+Worker Cloudflare (`worker.js`) : arrêt de la machine Fly à 23:00 UTC, rallumage permanent à 03:00 UTC. Inactif tant que le secret `FLY_API_TOKEN` n est pas posé dans Cloudflare. Voir `ops/fly-night-worker/README.md`.
