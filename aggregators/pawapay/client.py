@@ -62,7 +62,7 @@ FAILURE_MESSAGES_FR = {
     "WALLET_LIMIT_REACHED": "Plafond du compte Mobile Money atteint.",
     "UNSPECIFIED_FAILURE": "L'opérateur a refusé le paiement sans préciser la raison.",
     "UNKNOWN_ERROR": "Erreur inconnue chez l'opérateur.",
-    "INVALID_PHONE_NUMBER": "Numéro de téléphone invalide.",
+    "INVALID_PHONE_NUMBER": "Ce numéro n'est pas un numéro {net}. Vérifiez le numéro ou choisissez le bon réseau.",
     "INVALID_AMOUNT": "Montant invalide.",
     "AMOUNT_OUT_OF_BOUNDS": "Montant hors des limites autorisées par l'opérateur.",
     "INVALID_PROVIDER": "Opérateur non pris en charge pour ce numéro.",
@@ -309,6 +309,8 @@ def failure_message(failure: dict | None, network: str | None = None) -> str:
     msg = FAILURE_MESSAGES_FR.get(code)
     if msg:
         net, other = _network_names(network)
+        if code == "INVALID_PHONE_NUMBER" and net not in _NETWORK_NAMES.values():
+            return "Numéro de téléphone invalide."
         return msg.format(net=net, other=other)
     return failure.get("failureMessage") or code
 
