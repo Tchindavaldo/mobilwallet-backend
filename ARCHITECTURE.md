@@ -420,4 +420,4 @@ Refus `insufficient_balance` : `balance` (solde opérateur source), `fee`,
 
 ## ops/fly-night-worker
 
-Worker Cloudflare (`worker.js`) : arrêt de la machine Fly à 23:00 UTC, rallumage permanent à 03:00 UTC. Inactif tant que le secret `FLY_API_TOKEN` n est pas posé dans Cloudflare. Voir `ops/fly-night-worker/README.md`.
+Worker Cloudflare (`worker.js`) : arrêt de la machine Fly à 23:00 UTC, rallumage permanent à 03:00 UTC. Secret `FLY_API_TOKEN` posé ; les workflows GitHub `fly-on` / `fly-off` ne gardent que le lancement manuel. Voir `ops/fly-night-worker/README.md`.

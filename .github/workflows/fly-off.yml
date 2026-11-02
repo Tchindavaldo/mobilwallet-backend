@@ -6,9 +6,6 @@ name: Fly — éteindre
 
 on:
   workflow_dispatch:
-  # Chaque nuit a minuit heure du Cameroun (UTC+1) = 23:00 UTC.
-  schedule:
-    - cron: "0 23 * * *"
 
 concurrency: fly-machine-control
 

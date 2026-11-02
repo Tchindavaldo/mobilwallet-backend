@@ -347,8 +347,9 @@ depuis GitHub (onglet **Actions**, bouton *Run workflow*) :
 - **Fly — éteindre** (`.github/workflows/fly-off.yml`) : arrête la machine et empêche
   son redémarrage sur trafic entrant.
 
-**Arrêt nocturne automatique** : « éteindre » tourne chaque nuit à minuit et « allumer »
-à 4 h (heure du Cameroun, UTC+1 ; crons `0 23 * * *` et `0 3 * * *` UTC).
+**Arrêt nocturne automatique** : fait par le Worker Cloudflare `fly-night-worker`
+(minuit / 4 h heure du Cameroun, crons `0 23 * * *` et `0 3 * * *` UTC, cf.
+`ops/fly-night-worker/README.md`). Les deux workflows ci-dessus sont manuels seulement.
 
 Prérequis : secret de dépôt `FLY_API_TOKEN` (`fly tokens create deploy -a mobilwallet-backend`).
 Un `fly deploy` ré-applique `fly.toml`, donc rallume la machine en mode permanent.

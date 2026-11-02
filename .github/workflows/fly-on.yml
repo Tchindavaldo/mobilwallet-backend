@@ -10,9 +10,6 @@ on:
         description: "Redéployer aussi le code de la branche choisie avant d'allumer"
         type: boolean
         default: false
-  # Chaque nuit a 4 h heure du Cameroun (UTC+1) = 03:00 UTC (sans redeploiement).
-  schedule:
-    - cron: "0 3 * * *"
 
 concurrency: fly-machine-control
 
