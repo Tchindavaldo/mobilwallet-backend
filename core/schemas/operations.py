@@ -27,6 +27,6 @@ class PaymentPageRequest(BaseModel):
 
 
 class PredictNetworkRequest(BaseModel):
-    phone: str = Field(..., description="Numéro dans n'importe quel format.",
-                       examples=["696 08 00 87"])
+    phone: str = Field(..., description="Numéro AVEC indicatif pays (espaces, +, 00 tolérés). Sans indicatif : 422 country_code_required.",
+                       examples=["237 696 08 00 87"])
     aggregator: str = Field("pawapay")
