@@ -117,7 +117,7 @@ FastAPI génère automatiquement la doc OpenAPI :
 | GET | `/availability?aggregator=pawapay` | état des opérateurs (OPERATIONAL / DELAYED / CLOSED / NOT_ENABLED = non activé sur le compte marchand, refus 400 `operation_not_enabled`). `/pay` et `/payout` renvoient 503 `operator_unavailable` si CLOSED ; payout DELAYED accepté (file d attente) |
 | GET | `/availability/status-page?aggregator=pawapay` | page de statut publique de l'agrégateur : état par réseau/opération + incidents non résolus, informatif : ne bloque pas les paiements (vide si l'agrégateur n'en a pas) |
 | GET | `/pay/minimum?aggregator=pawapay&network=MTN` | montant min/max d'un dépôt (réseau vide = page de paiement) ; en dessous, /pay et /pay/page répondent 422 `amount_too_low` |
-| POST | `/operators/predict` | numéro libre -> format international + opérateur |
+| POST | `/operators/predict` | numéro avec indicatif pays (obligatoire, sinon 422 `country_code_required`) -> format international + opérateur |
 | POST | `/pay/page` | page de paiement hébergée (pawaPay) -> `redirect_url` |
 | POST | `/payout/bulk` | jusqu'à 20 virements en un appel, résultat par élément |
 | POST | `/payout/{ref}/cancel` | annule un virement encore en file d'attente |

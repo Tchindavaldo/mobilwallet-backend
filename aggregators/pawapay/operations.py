@@ -4,6 +4,8 @@ payouts groupés (bulk) et page de paiement hébergée."""
 
 import logging
 
+from fastapi import HTTPException
+
 from . import client
 from .payout_flow import friendly_msg
 
@@ -24,6 +26,11 @@ def network_of(provider_code: str) -> str:
 async def predict_network(phone: str) -> dict:
     """{phone (format international), network, provider, country}."""
     r = await client.predict_provider(phone)
+    if (r.get("failureReason") or {}).get("failureCode") == "INVALID_COUNTRY":
+        # Numéro sans indicatif pays : pawaPay lit les premiers chiffres comme
+        # un pays. L'indicatif est OBLIGATOIRE (ex. 237696080087).
+        raise HTTPException(422, {"code": "country_code_required",
+                                  "message": "Indicatif pays obligatoire (ex. 237696080087)."})
     return {"phone": r.get("phoneNumber"), "network": network_of(r.get("provider")),
             "provider": r.get("provider"), "country": r.get("country"),
             "failure": r.get("failureReason")}
