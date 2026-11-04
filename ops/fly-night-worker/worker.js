@@ -20,6 +20,26 @@ async function setAuto(env, m, autostart, autostop) {
   await fly(env, 'POST', `/machines/${m.id}`, { config, skip_launch: true });
 }
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Le changement de config fait remplacer la machine par Fly (~2 s) : un start
+// envoyé pendant ce temps est refusé (412 « machine getting replaced »).
+// Attente 5 s, puis nouvel essai toutes les 5 s pendant 1 min.
+async function startWithRetry(env, id) {
+  const deadline = Date.now() + 60_000;
+  for (let attempt = 1; ; attempt++) {
+    await sleep(5_000);
+    try {
+      await fly(env, 'POST', `/machines/${id}/start`);
+      console.log(`[fly-night] start ${id} ✓ (essai ${attempt})`);
+      return;
+    } catch (e) {
+      console.log(`[fly-night] start ${id} essai ${attempt} ❌ ${e.message}`);
+      if (Date.now() >= deadline) return;
+    }
+  }
+}
+
 async function run(env, action) {
   if (!env.FLY_API_TOKEN) {
     console.log(`[fly-night] ${action} ignoré : FLY_API_TOKEN absent`);
@@ -32,7 +52,7 @@ async function run(env, action) {
       await fly(env, 'POST', `/machines/${m.id}/stop`).catch(e => console.log(`[fly-night] stop ${m.id}: ${e.message}`));
     } else {
       await setAuto(env, m, true, 'off');
-      await fly(env, 'POST', `/machines/${m.id}/start`).catch(e => console.log(`[fly-night] start ${m.id}: ${e.message}`));
+      await startWithRetry(env, m.id);
     }
     console.log(`[fly-night] ${action} ✓ ${m.id}`);
   }
